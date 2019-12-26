@@ -13,7 +13,12 @@ join_list <- c('Nice List','Naughty List') %>%
   regex_inner_join(read_excel(input, sheet = 'Present List') %>% 
                      rename('Address Part' = 'Address') , 
                    by = c(`Address`='Address Part')) %>%
-  mutate('Test' = `Name Part`)
+  filter(mapply(grepl,`Name Part`,`Name`)) 
+
+detail_list <- join_list %>%
+  group_by()
+
+  
 
 
 all_list<- c('Nice List','Naughty List') %>%
