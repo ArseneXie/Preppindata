@@ -1,4 +1,5 @@
 library(dplyr)
+library(tidyr)
 library(readr)
 library(stringr)
 
@@ -25,7 +26,7 @@ result <- read_csv("E:/PD 2020 Wk 4 Input.csv") %>%
   group_by(`Question Number`) %>% 
   mutate('Id' = row_number()) %>%
   merge(.,read_csv("E:/Store Survey Results - Question Sheet.csv"), by.x='Question Number', by.y='Number') %>%
-  
+  spread('Question','Answer') %>%
   rowwise() %>%
   mutate('Country' = clean_country(`Country`),
          'Date' = get_ymd_date(`What day did you fill the survey in?`)) %>%
