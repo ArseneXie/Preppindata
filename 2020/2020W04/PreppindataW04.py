@@ -21,7 +21,6 @@ question = pd.read_csv(r'E:/Store Survey Results - Question Sheet.csv' )
 result['Id'] = result.groupby('Question Number').cumcount()+1
 result = pd.merge(result,question,how='inner',left_on='Question Number',right_on='Number')
 result.drop(['Question Number','Number',],axis=1,inplace=True)
-result['Country'] = result.apply(lambda x: x['Country'] if x['Country'] else x['Store'], axis=1)
 result['Country'] = result['Country'].apply(lambda x: clean_country(x))
 result['DoB'].fillna('',inplace=True)
 
