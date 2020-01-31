@@ -43,6 +43,3 @@ final = final.query("Result!='Drop'")[['Country', 'Store', 'Name','Completion Da
                                         'Would you recommend C&BSco to your friends and family? (Score 0-10)',
                                         'Promoter','Detractor','Passive',
                                         'Age of Customer','If you would, why?',"If you wouldn't, why?"]].copy()
-
-
-
