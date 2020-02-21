@@ -1,7 +1,7 @@
 import pandas as pd
 import re
 
-xls = pd.ExcelFile("E:/PD 2020 Wk 8 Input-3.xlsx")
+xls = pd.ExcelFile("E:/PD 2020 Wk 8 Input Not Random.xlsx")
 
 temp = []
 for sheet in [sh for sh in xls.sheet_names if re.search('^Week',sh)]:
@@ -24,5 +24,10 @@ budget['From Week'] = budget['Range'].apply(lambda x:int(re.search('\-(\d+)\s',s
 budget['To Week'] = budget['Range'].apply(lambda x:int(re.search('\-(\d+)\-',str(x)).group(1)))
 budget = budget.pivot_table(index=['Type','From Week','To Week'], columns='Measure', values='Budget', aggfunc='sum').reset_index()
 
+finalA = pd.merge(sales,budget,how='inner',on='Type').query(
+    '`Week`>=`From Week` and `Week`<=`To Week` and (`Sales Volume`<`Volume` or `Sales Value`<`Value`)')
+finalA = finalA[['Type', 'Week', 'Sales Volume', 'Sales Value', 'Volume','Value']].copy()
 
-finalA = pd.merge(sales,budget,how='inner',on=['Type','Week'])
+finalB =  pd.merge(sales,profit,how='inner',on=['Type','Week']).query(
+    '`Sales Volume`>`Profit Min Sales Volume` and `Sales Value`>`Profit Min Sales Value`')
+finalB = finalB[['Type', 'Week', 'Sales Volume', 'Sales Value', 'Profit Min Sales Volume','Profit Min Sales Value']].copy()
