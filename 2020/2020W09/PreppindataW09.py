@@ -1,33 +1,19 @@
 import pandas as pd
 import re
+from datetime import datetime as dt
 
-xls = pd.ExcelFile("E:/PD 2020 Wk 8 Input Not Random.xlsx")
+result = pd.read_csv(r'E:/PD 2020 Wk 9 Input - Sheet1.csv', dtype=object)
+result = result[~result['Poll'].str.contains('Average')]
+result['Sample Type'] = result['Sample'].apply(lambda x: 'Registered Voter' if re.search('RV',x) else 'Likely Voter' if re.search('LV',x) else 'Unknown')
 
-temp = []
-for sheet in [sh for sh in xls.sheet_names if re.search('^Week',sh)]:
-    df = pd.read_excel(xls,sheet)
-    df.insert(0,'Week',int(re.search('(\d+)',sheet).group(1)))
-    temp.append(df.rename(columns={'Volume':'Sales Volume','Value':'Sales Value'}))
-sales = pd.concat(temp,sort=False)
-sales['Type'] = sales['Type'].str.lower()
-sales = sales.groupby(['Type','Week'],as_index=False).agg({'Sales Volume':'sum','Sales Value':'sum'})
+result['End Date'] = result['Date'].apply(lambda x: dt.strptime(re.search(r'(\d+/\d+$)',x).group(1),'%m/%d').date())
+result['End Date'] = result['End Date'].apply(lambda x: x.replace(year=(2019 if x.month>10 else 2020)))
+cols = result.columns.drop(['Poll','Sample Type','End Date'])
+result[cols] = result[cols].apply(pd.to_numeric, errors='coerce')
+result = result.drop(['Sample','Date'], axis=1).dropna()
 
-profit = pd.read_excel(xls,'Budget',skiprows=2,nrows=16,usecols='C:F')
-profit['Week'] = profit['Week '].apply(lambda x:int(re.search('(\d+)$',x).group(1)))
-profit['Type'] = profit['Type'].str.lower()
-
-budget = pd.read_excel(xls,'Budget',skiprows=21,nrows=4,usecols='C:G')
-budget['Type'] = budget['Type'].apply(lambda x:re.search('([a-z]+)',x.lower()).group(1))
-budget['Measure'] = budget['Measure'].apply(lambda x:re.sub('Budget\s','',x))
-budget = budget.melt(id_vars=['Type','Measure'],value_name='Budget',var_name='Range')
-budget['From Week'] = budget['Range'].apply(lambda x:int(re.search('\-(\d+)\s',str(x)).group(1)))
-budget['To Week'] = budget['Range'].apply(lambda x:int(re.search('\-(\d+)\-',str(x)).group(1)))
-budget = budget.pivot_table(index=['Type','From Week','To Week'], columns='Measure', values='Budget', aggfunc='sum').reset_index()
-
-finalA = pd.merge(sales,budget,how='inner',on='Type').query(
-    '`Week`>=`From Week` and `Week`<=`To Week` and (`Sales Volume`<`Volume` or `Sales Value`<`Value`)')
-finalA = finalA[['Type', 'Week', 'Sales Volume', 'Sales Value', 'Volume','Value']].copy()
-
-finalB =  pd.merge(sales,profit,how='inner',on=['Type','Week']).query(
-    '`Sales Volume`>`Profit Min Sales Volume` and `Sales Value`>`Profit Min Sales Value`')
-finalB = finalB[['Type', 'Week', 'Sales Volume', 'Sales Value', 'Profit Min Sales Volume','Profit Min Sales Value']].copy()
+final = result.melt(id_vars=['Poll','Sample Type','End Date'],var_name='Candidate',value_name='Poll Results')
+final['Rank'] = final.groupby(['Poll','Sample Type','End Date'], as_index=False)['Poll Results'].rank(ascending=False, method='max').astype(int)
+final['Spread'] = final.apply(lambda x: x['Poll Results']*(1 if x['Rank']==1 else -1 if x['Rank']==2 else 0), axis=1)
+final['Spread from 1st to 2nd Place'] = final['Spread'].groupby([final['Poll'],final['Sample Type'],final['End Date']]).transform('sum')
+final = final.drop('Spread', axis=1).sort_values(['End Date','Poll','Sample Type','Rank'])

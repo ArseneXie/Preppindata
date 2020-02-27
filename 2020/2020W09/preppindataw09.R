@@ -1,47 +1,24 @@
 library(dplyr)
 library(tidyr)
-library(readxl)
+library(readr)
 library(stringr)
-library(fuzzyjoin)
-library(purrr)
 
-input <- "E:/PD 2020 Wk 8 Input Not Random.xlsx"
+final <- read_csv("E:/PD 2020 Wk 9 Input - Sheet1.csv", 
+                  col_types = cols(Poll = col_character(),
+                                   Date = col_character(),
+                                   Sample = col_character(),
+                                   .default = col_double())) %>%
+  drop_na() %>%
+  filter(!grepl('Average',`Poll`)) %>%
+  mutate('Sample Type' = if_else(grepl('RV',`Sample`),'Registered Voter',
+                                 if_else(grepl('LV',`Sample`),'Likely Voter','Unknown')),
+         'End Date Year' = if_else(as.integer(str_extract(`Date`,'(\\d+)(?=/\\d+$)'))>10,'2019','2020'),
+         'End Date' = as.Date(paste(`End Date Year`,str_extract(`Date`,'(\\d+/\\d+$)')),format='%Y %m/%d')) %>%
+  select(-c('Date','Sample','End Date Year')) %>%
+  pivot_longer(cols = -c('Poll','Sample Type','End Date'), names_to = 'Candidate', values_to = 'Poll Results') %>%
+  group_by(`Poll`,`Sample Type`,`End Date`) %>%
+  mutate('Rank' = rank(desc(`Poll Results`),ties.method='max'),
+         'Spread from 1st to 2nd Place' = max(`Poll Results`)-nth(`Poll Results`,2,order_by = desc(`Poll Results`))) %>%
+  arrange(`End Date`,`Poll`,`Sample Type`,`Rank`)
 
-sales <-  input %>% excel_sheets() %>% set_names() %>% .[grepl('^Week',.)] %>%
-  map_df(~ read_excel(path = input, sheet = .x) %>%
-           rename('Sales Volume'=!!names(.[3]),'Sales Value'=!!names(.[4])),.id='Week') %>%
-  mutate('Type' = tolower(`Type`),
-         'Week' = as.integer(str_extract(`Week`,'\\d+'))) %>%
-  group_by(`Type`,`Week`) %>%
-  summarise('Sales Volume'=sum(`Sales Volume`),
-            'Sales Value'=sum(`Sales Value`))
-
-profit <- read_excel(input, sheet = 'Budget', range = 'C3:F19') %>%
-  mutate('Type' = tolower(`Type`),
-         'Week' = as.integer(str_extract(`Week`,'\\d+$'))) 
-
-budget <- read_excel(input, sheet = 'Budget', range = 'C22:G26') %>%
-  pivot_longer(cols = -c('Type','Measure'), names_to = 'Range', values_to = 'Budget') %>%
-  mutate('Range' = as.Date(as.integer(`Range`), origin = '1899-12-30'),
-         'From Week' = as.integer(format(`Range`,format='%d')),
-         'To Week' = as.integer(format(`Range`,format='%m'))) %>%
-  mutate('Type'= str_extract(tolower(`Type`),'[a-z]+'),
-         'Measure' = str_remove(`Measure`,'^Budget\\s')) %>%
-  pivot_wider(names_from = 'Measure', values_from = 'Budget')
-
-finalA <- fuzzy_inner_join(sales,budget,
-                           by=c('Type','Week'='From Week','Week'='To Week'),
-                           match_fun=list(`==`,`>=`,`<=`)) %>%
-  filter(`Sales Volume`<`Volume` | `Sales Value`<`Value`) %>%
-  rename('Type'='Type.x') %>%
-  select(c('Type', 'Week', 'Sales Volume', 'Sales Value', 'Volume','Value'))
-
-finalB <- fuzzy_inner_join(sales,profit,
-                           by=c('Type','Week','Sales Volume'='Profit Min Sales Volume',
-                                'Sales Value'='Profit Min Sales Value'),
-                           match_fun=list(`==`,`==`,`>`,`>`)) %>%
-  rename('Type'='Type.x','Week'='Week.x') %>%
-  select(c('Type', 'Week', 'Sales Volume', 'Sales Value', 'Profit Min Sales Volume','Profit Min Sales Value'))
-
-View(finalA)
-View(finalB)
+View(final)
