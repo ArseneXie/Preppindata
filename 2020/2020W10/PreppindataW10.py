@@ -1,67 +1,85 @@
-import pandas as pd
-import itertools
+from kanren import *
+from kanren.core import lall
 
-xls = pd.ExcelFile("E:/PD 2020 Wk 10 Input.xlsx")
-df = pd.read_excel(xls,sheet_name=0)
-candidate = pd.DataFrame(list(itertools.product(
-    df['Title'].tolist(), df['LastName'].tolist(), df['Product'].tolist(), df['Priority'].tolist())))
-candidate.columns  = df.columns 
+def higher(a, b, list):
+    return membero((a,b), zip(list, list[1:]))
 
-candidate['Pass'] = candidate.apply(lambda x: not(x['Title'][0:1]!=x['LastName'][0:1] and x['Priority']==1), axis=1)
-
-candidate['Pass'] = candidate.apply(lambda x: not((x['LastName']=='Bevens' or x['LastName']=='Dimmadome') and
-                                                  (x['Product']=='Chamomile Bar' or x['Product']=='Hibiscus Soap-on-a-Rope')) 
-                                    if x['Pass'] else False, axis=1)
-
-candidate['Pass'] = candidate.apply(lambda x: not((x['Title']=='Sergeant' and x['Product']=='Lemon Gel') and
-                                                  (x['Priority']!=1 and x['Priority']!=3)) if x['Pass'] else False, axis=1)
-
-candidate['Pass'] = candidate.apply(lambda x: not(x['Title']=='Reverend'  and
-                                                  (x['Product']=='Rose Bar' or x['Priority']==2)) if x['Pass'] else False, axis=1)
-
-candidate['Pass'] = candidate.apply(lambda x: not(x['Title']=='Sergeant'  and
-                                                  (x['Product']!='Hibiscus Soap-on-a-Rope' and x['Priority']!=4)) if x['Pass'] else False, axis=1)
-
-candidate['Pass'] = candidate.apply(lambda x: not((x['Title']!='Reverend' and x['LastName']=='Dimmadome') or
-                                                  (x['Title']=='Baroness' and x['Product']=='Hibiscus Soap-on-a-Rope')) if x['Pass'] else False, axis=1)
-
-candidate = candidate[candidate['Pass']].copy()
-
-title = list(itertools.permutations(df['Title'].tolist(), 4))
-lastname = list(itertools.permutations(df['LastName'].tolist(), 4))
-product = list(itertools.permutations(df['Product'].tolist(), 4))
+def clue1(x):
+    print(x[0][0])
+    return success if x[0][0:1]=='A' and x[3]=='1' else fail
 
 
-test = 'Arsene'
-test[0:1]
+customer = var()
 
+clues = lall(
+    (eq, (var(), var(), var(), var()), customer),
+    (higher,(var(), var(), var(), '1'), (var(), var(), var(), '2'), customer),
+    (higher,(var(), var(), var(), '2'), (var(), var(), var(), '3'), customer),
+    (higher,(var(), var(), var(), '3'), (var(), var(), var(), '4'), customer),
+    (membero,('ATitle', 'Aname', 'AProd', var()), customer),
+    (membero,('BTitle', 'Bname', 'BProd', var()), customer),
+    (membero,('DTitle', 'Dname', 'DProd', '3'), customer),
+    (membero,('CTitle', 'Cname', 'CProd', '4'), customer),
+    
+)
 
+solutions = run(0, customer, clues)
 
-title = pd.DataFrame(list(itertools.permutations(df['Title'].tolist(), 4)))
-lastname = pd.DataFrame(list(itertools.permutations(df['LastName'].tolist(), 4)))
-product = pd.DataFrame(list(itertools.permutations(df['Product'].tolist(), 4)))
+print('\nHere are all the details:')
+attribs = ['Title', 'LastName', 'Product', 'Priority']
+print('\n' + '\t\t'.join(attribs))
+print('=' * 57)
+for item in solutions[0]:
+    print('')
+    print('\t\t'.join([str(x) for x in item]))
+    
 
+#
+# def left(q, p, list):
+#    return membero((q,p), zip(list, list[1:]))
+# def next(q, p, list):
+#    return conde([left(q, p, list)], [left(p, q, list)])
 
-from itertools import groupby
+# houses = var()
 
-x = [(0, 'Add:'), (1, 'Net'), (2, 'Profit'), (4, 'Less:'), (5, 'Dep')]
-for _, group in groupby(enumerate(x), lambda a:a[1][0] - a[0]):
-    words = [text for _, (_,text) in group] # extract words from data structure
-    print(' '.join(words))
+# rules = lall(
+#    (eq, (var(), var(), var(), var(), var()), houses),
 
+#    (membero,('Englishman', var(), var(), var(), 'red'), houses),
+#    (membero,('Swede', var(), var(), 'dog', var()), houses),
+#    (membero,('Dane', var(), 'tea', var(), var()), houses),
+#    (left,(var(), var(), var(), var(), 'green'),
+#    (var(), var(), var(), var(), 'white'), houses),
+#    (membero,(var(), var(), 'coffee', var(), 'green'), houses),
+#    (membero,(var(), 'Pall Mall', var(), 'birds', var()), houses),
+#    (membero,(var(), 'Dunhill', var(), var(), 'yellow'), houses),
+#    (eq,(var(), var(), (var(), var(), 'milk', var(), var()), var(), var()), houses),
+#    (eq,(('Norwegian', var(), var(), var(), var()), var(), var(), var(), var()), houses),
+#    (next,(var(), 'Blend', var(), var(), var()),
+#    (var(), var(), var(), 'cats', var()), houses),
+#    (next,(var(), 'Dunhill', var(), var(), var()),
+#    (var(), var(), var(), 'horse', var()), houses),
+#    (membero,(var(), 'Blue Master', 'beer', var(), var()), houses),
+#    (membero,('German', 'Prince', var(), var(), var()), houses),
+#    (next,('Norwegian', var(), var(), var(), var()),
+#    (var(), var(), var(), var(), 'blue'), houses),
+#    (next,(var(), 'Blend', var(), var(), var()),
+#    (var(), var(), 'water', var(), var()), houses),
+#    (membero,(var(), var(), var(), 'zebra', var()), houses)
+# )
 
-result = pd.read_csv(r'E:/PD 2020 Wk 9 Input - Sheet1.csv', dtype=object)
-result = result[~result['Poll'].str.contains('Average')]
-result['Sample Type'] = result['Sample'].apply(lambda x: 'Registered Voter' if re.search('RV',x) else 'Likely Voter' if re.search('LV',x) else 'Unknown')
+# solutions = run(0, houses, rules)
+# output = [house for house in solutions[0] if 'zebra' in house][0][0]
 
-result['End Date'] = result['Date'].apply(lambda x: dt.strptime(re.search(r'(\d+/\d+$)',x).group(1),'%m/%d').date())
-result['End Date'] = result['End Date'].apply(lambda x: x.replace(year=(2019 if x.month>10 else 2020)))
-cols = result.columns.drop(['Poll','Sample Type','End Date'])
-result[cols] = result[cols].apply(pd.to_numeric, errors='coerce')
-result = result.drop(['Sample','Date'], axis=1).dropna()
-
-final = result.melt(id_vars=['Poll','Sample Type','End Date'],var_name='Candidate',value_name='Poll Results')
-final['Rank'] = final.groupby(['Poll','Sample Type','End Date'], as_index=False)['Poll Results'].rank(ascending=False, method='max').astype(int)
-final['Spread'] = final.apply(lambda x: x['Poll Results']*(1 if x['Rank']==1 else -1 if x['Rank']==2 else 0), axis=1)
-final['Spread from 1st to 2nd Place'] = final['Spread'].groupby([final['Poll'],final['Sample Type'],final['End Date']]).transform('sum')
-final = final.drop('Spread', axis=1).sort_values(['End Date','Poll','Sample Type','Rank'])
+# print('\n' + output + ' is the owner of the rabbit')
+# print('\nHere are all the details:')
+# attribs = ['Name', 'Pet', 'Color', 'Country']
+# print('\n' + '\t\t'.join(attribs))
+# print('=' * 57)
+# for item in solutions[0]:
+#     print('')
+#     print('\t\t'.join([str(x) for x in item]))    
+    
+stra = 'Arsene'
+stra[0:1]    
+    
