@@ -1,20 +1,56 @@
 library(dplyr)
 library(readxl)
 library(stringr)
+library(purrr)
+library(bizdays)
+library(lubridate)
 
-xlsx <- "E:/PD week 12 input.xlsx"
+Sys.setlocale("LC_ALL","English")
 
-final <- read_excel(xlsx, sheet = "Percentage of Sales") %>%
-  filter(`Percentage of Sales`>0) %>%
-  mutate('Product' = paste0(`Product ID`,`Size`),
-         'Year Week Number' = paste0(strftime(`Week Commencing`,format = '%Y'),
-                                     str_pad(as.integer(strftime(`Week Commencing`,format = '%U'))+1, 2, pad = '0'))) %>%
-  merge(.,read_excel(xlsx,sheet = "Lookup Table") %>%
-          mutate('ScentKey' = str_remove_all(tolower(`Scent`),'[^a-z]')), by='Product') %>%
-  merge(.,read_excel(xlsx,sheet = "Total Sales") %>%
-          mutate('ScentKey' = str_remove_all(tolower(`Scent`),'[^a-z]')) %>%
-          select(-'Scent'), by=c('ScentKey','Year Week Number')) %>%
-  mutate('Sales' = round(`Total Scent Sales`*`Percentage of Sales`,2)) %>%
-  select(c('Year Week Number', 'Scent', 'Size', 'Product Type', 'Sales'))
+xlsx <- "E:/Ticket Data.xlsx"
+cal <-  create.calendar(name = "mycal", weekdays=c("saturday", "sunday"))
 
-View(final)
+ticket <-  xlsx %>%
+  excel_sheets() %>% .[grepl('^...$',.)] %>%
+  set_names() %>%
+  map_df(
+    ~ read_excel(path = xlsx, sheet = .x,)) %>%
+  mutate('Department' = trimws(str_extract(`Ticket`,'(?<=/)(.*)(?=/)'))) %>%
+  group_by(`Ticket`) %>%
+  mutate('MaxTimestamp' = max(`Timestamp`),
+         'Current Status' = max(if_else(`Timestamp`==`MaxTimestamp`,`Status Name`,''))) %>% 
+  merge(.,read_excel(xlsx, sheet = "SLA Agreements"), by='Department') %>%
+  ungroup()
+
+output1 <- ticket %>%
+  filter(`Timestamp`==`MaxTimestamp`) %>%
+  group_by(`Current Status`) %>%
+  summarise('Ticket Count' = n())
+
+output2 <- ticket %>%
+  filter(`Status Name`=='Logged') %>%
+  mutate('Start Tune' = if_else(weekdays(`Timestamp`)=='Sunday',`Timestamp`+days(1),
+                                if_else(weekdays(`Timestamp`)=='Saturday',`Timestamp`+days(2),`Timestamp`)),
+         'SLA Due' = bizdays::offset(`Start Tune`,`SLA Agreement`,cal),
+         'SLA compare' = if_else(as.Date(`MaxTimestamp`)>`SLA Due`, 'over SLA','under SLA'),
+         'Metric' = paste(if_else(`Current Status`=='Closed','Closed','Open'),`SLA compare`)) %>% 
+  filter(`Metric`=='Closed over SLA' |  `Metric`=='Open under SLA') %>%
+  group_by(`Metric`) %>%
+  summarise('Ticket Count' = n())
+
+output3 <- ticket %>%
+  filter(`Status Name`=='Logged' & `Current Status`=='Closed') %>%
+  mutate('Start Tune' = if_else(weekdays(`Timestamp`)=='Sunday',`Timestamp`+days(1),
+                                if_else(weekdays(`Timestamp`)=='Saturday',`Timestamp`+days(2),`Timestamp`)),
+         'SLA Due' = bizdays::offset(`Start Tune`,`SLA Agreement`,cal),
+         'SLA compare' = if_else(as.Date(`MaxTimestamp`)>`SLA Due`, 0,1)) %>%
+  group_by(`Department`) %>%
+  summarise('Archieved %' = sum(`SLA compare`)/n()) %>%
+  mutate('Rank' =  dense_rank(desc(`Archieved %`))) %>%
+  select(c('Rank','Archieved %','Department')) %>%
+  arrange(`Rank`)
+
+View(output1)
+View(output2)
+View(output3)
+  
