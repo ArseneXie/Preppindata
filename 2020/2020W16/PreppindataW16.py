@@ -1,25 +1,22 @@
 import pandas as pd
-from mlxtend.preprocessing import TransactionEncoder
-from mlxtend.frequent_patterns import apriori
-from mlxtend.frequent_patterns import association_rules
+import re
 
-xls = pd.ExcelFile("E:/Transactions.xlsx")
-txn = pd.read_excel(xls,sheet_name=0)
-items = [list(map(str.strip, x)) for x in txn['Items'].str.split(',').values.tolist()]
+xls = pd.ExcelFile("E:/Can't Desktop Prep this-2.xlsx")
+temp = []
+for sheet in [sh for sh in xls.sheet_names if re.match('.*Sales$',sh)]:
+    df = pd.read_excel(xls,sheet)
+    df.insert(0,'Store',re.search('^(.*)\s', sheet).group(1).strip())
+    temp.append(df)
+sales = pd.concat(temp)   
+sales = pd.melt(sales, id_vars=['Store', 'Category', 'Scent'], var_name='Col', value_name='Val')
+temp = sales['Col'].str.split(' ', n = 1, expand = True) 
+sales['Measure'] = temp[0]
+sales['Date'] = pd.to_datetime(temp[1], format='%d/%m/%Y').dt.date
+sales = sales.pivot_table(index = ['Store', 'Category', 'Scent','Date'],
+                          columns='Measure', values='Val', aggfunc='sum').reset_index()
 
-te = TransactionEncoder()
-te_ary = te.fit(items).transform(items)
-df = pd.DataFrame(te_ary, columns=te.columns_)
+staff = pd.read_excel(xls,'Staff days worked')
+staff['Month'] = staff['Month'].dt.date
+staff = pd.melt(staff, id_vars='Month', var_name='Store', value_name='Staff days worked').rename(columns={'Month':'Date'})
 
-support = apriori(df, min_support=0.01, use_colnames=True)
-rules = association_rules(support, metric='lift', min_threshold=0.01)
-
-rules['LHS Len'] = rules['antecedents'].apply(lambda x: len(x))
-rules['RHS Len'] = rules['consequents'].apply(lambda x: len(x))
-final = rules[(rules['LHS Len']==1) & (rules['RHS Len']==1)].copy()
-final['antecedents'] = rules['antecedents'].apply(lambda x: list(x)[0])
-final['consequents'] = rules['consequents'].apply(lambda x: list(x)[0])
-final = final.rename(columns = {'antecedents':'LHS Item', 'consequents':'RHS Item',
-                                'antecedent support':'LHS Support', 'consequent support':'RHS Support'})
-final['Association Rule'] = final['LHS Item']+' --> '+final['RHS Item']
-final = final[['Association Rule','LHS Item', 'RHS Item', 'LHS Support', 'RHS Support','confidence', 'lift']]
+final = pd.merge(sales,staff,on=['Date','Store'])[['Store', 'Category', 'Scent', 'Date', 'Sales', 'Profit', 'Staff days worked']]
