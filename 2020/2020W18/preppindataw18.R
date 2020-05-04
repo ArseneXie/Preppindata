@@ -5,9 +5,9 @@ library(stringr)
 library(purrr)
 
 xlsx <- 'E:/Liverpool Lineups.xlsx'
+game_time <- 90
 
 data_head <- read_excel(xlsx, col_names = FALSE, skip = 4, n_max = 4) %>%
-  
   mutate('col_level' = row_number()) %>%
   filter(`col_level`<=2) %>%
   gather(., key='var', value='cols', -'col_level') %>%
@@ -26,43 +26,26 @@ data <- read_excel(xlsx, skip = 7 ,col_names = FALSE) %>%
   discard(~all(is.na(.x))) %>%
   map_df(~.x) 
 
+final <- data %>%
+  select(matches('^(Match Details No|Start|Subst)')) %>%
+  pivot_longer(.,cols=matches('^S'),names_to = 'Type Number',values_to = 'Player Name') %>%
+  mutate('Start Appearance' = ifelse(grepl('^Start',`Type Number`),1,0),
+         'Player No' = str_extract(`Type Number`,'(\\d+)$')) %>%
+  merge(.,data %>%
+          select(matches('^(Match Details No|sub\\d)')) %>%
+          pivot_longer(.,cols=matches('^s'),names_to = 'Type',values_to = 'Value') %>%
+          mutate('subX' = str_extract(`Type`,'^(sub\\d)'),
+                 'ValueType' = ifelse(grepl('\\.[12]$',`Type`),ifelse(grepl('\\.[1]$',`Type`),'SubOn','SubMins'),'SubOff')) %>%
+          pivot_wider(.,id_cols=c('Match Details No.','subX'),names_from = 'ValueType', values_from = 'Value') %>%
+          pivot_longer(.,cols=matches('Sub(On|Off)'),names_to = 'OnOff',values_to = 'Player No') %>%
+          mutate('Mins Played' = ifelse(`OnOff`=='SubOff',`SubMins`,game_time-`SubMins`)),
+        by=c('Match Details No.','Player No'), all.x = TRUE) %>%
+  mutate('Appearances' = ifelse(is.na(`OnOff`),`Start Appearance`,1),
+         'Mins Played' = ifelse(is.na(`Mins Played`),`Start Appearance`*game_time,`Mins Played`)) %>%
+  group_by(`Player Name`) %>%
+  summarise('In Squad' = n_distinct(`Match Details No.`),
+            'Appearances' = sum(`Appearances`),
+            'Mins Played' = sum(`Mins Played`),
+            'Mins per Game' = ifelse(`Appearances`==0,0,`Mins Played`/`Appearances`))
 
-
-device <- survey %>%
-  select('How have you been watching Netflix? (Phone, TV, etc.)') %>%
-  rename('Using' = !!names(.[1])) %>%
-  cSplit(., 'Using', ',|&') %>%
-  pivot_longer(.,cols=matches('^Using'), names_to='ToDrop', values_to='Using', values_drop_na = TRUE) %>%
-  mutate('Using' = tolower(`Using`)) %>%
-  filter(`Using`!='etc.') %>%
-  merge(.,dev_list,by='Using',all.x=TRUE) %>%
-  mutate_at(vars('Device'), ~replace_na(., 'Other')) %>%
-  group_by(`Device`) %>%
-  summarise('Count' = n())
-
-show_in_Q <- colnames(survey)[grepl('.*rate.*\\w\\?', colnames(survey))] %>%
-  str_extract(.,'(?<=rate\\s)(.*)(?=\\?)') %>%
-  toupper(.)
-
-show <- rbind(survey %>%
-  select(c('How would you rate "Other"?','What have you been binging during lockdown?')) %>%
-  rename('Rate' = !!names(.[1]), 'lockdown' = !!names(.[2])) %>%
-  cSplit(., 'lockdown', ',') %>%
-  pivot_longer(.,cols=matches('^lockdown'), names_to='ToDrop', values_to='Show', values_drop_na = TRUE) %>%
-  mutate('Show'= toupper(`Show`)) %>%
-  filter(is.na(match(`Show`,show_in_Q))) %>%
-  merge(.,show_list,by='Show') %>%
-  select(c('Show','Rate')),
-  survey %>%
-  select(matches("lockdown") | matches("rate [^\"]")) %>%
-  rename('lockdown' = !!names(.[1])) %>%
-  pivot_longer(.,cols=matches('rate'), names_to='Question', values_to='Rate', values_drop_na = TRUE) %>%
-  mutate('Show' =  toupper(str_extract(`Question`,'(?<=rate\\s)(.*)(?=\\?)'))) %>%
-  filter(str_detect(toupper(`lockdown`),`Show`)) %>%
-  select(c('Show','Rate'))) %>%
-  group_by(`Show`) %>%
-  summarise('Rate' = mean(`Rate`)) %>%
-  mutate('Rank' = dense_rank(desc(`Rate`)))
-
-View(device)
-View(show)
+View(final)
