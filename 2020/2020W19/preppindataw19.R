@@ -26,6 +26,45 @@ data <- read_excel(xlsx, skip = 7 ,col_names = FALSE) %>%
   discard(~all(is.na(.x))) %>%
   map_df(~.x) 
 
+opt1 <- data %>%
+  select(c('Match Details Location','Match Details Result', 'Match Details Formation','Match Details Oppo Form.')) %>%
+  separate(`Match Details Result`,c('GoalsA','GoalsB'), sep='-') %>%
+  mutate('Liverpool Goals' = as.numeric(if_else(`Match Details Location`=='H',`GoalsA`,`GoalsB`)),
+         'Opposition Goals' = as.numeric(if_else(`Match Details Location`=='A',`GoalsA`,`GoalsB`))) %>%
+  rename('Formation' = 'Match Details Formation',
+         'Oppo Form.' = 'Match Details Oppo Form.') %>%
+  group_by(`Formation`,`Oppo Form.`)%>%
+  summarise('Games Played' = n(),
+            'Avg Goals Scored' = mean(`Liverpool Goals`),
+            'Liverpool Goals' = sum(`Liverpool Goals`),
+            'Avg Goals Conceded' = mean(`Opposition Goals`),
+            'Opposition Goals' = sum(`Opposition Goals`)) %>%
+  select(c('Formation', 'Oppo Form.', 'Games Played', 'Liverpool Goals','Avg Goals Scored', 'Opposition Goals', 'Avg Goals Conceded'))
+
+
+opt2 <- data %>%
+  select(matches('^(Match Details No|Match Details Formation|Start|Subst)')) %>%
+  pivot_longer(.,cols=matches('^S'),names_to = 'Type Number',values_to = 'Player Name') %>%
+  mutate('Start Appearance' = ifelse(grepl('^Start',`Type Number`),1,0),
+         'Player No' = str_extract(`Type Number`,'(\\d+)$')) %>%
+  merge(.,data %>%
+          select(matches('^(Match Details No|sub\\d)')) %>%
+          pivot_longer(.,cols=matches('^s'),names_to = 'Type',values_to = 'Value') %>%
+          mutate('subX' = str_extract(`Type`,'^(sub\\d)'),
+                 'ValueType' = ifelse(grepl('\\.[12]$',`Type`),ifelse(grepl('\\.[1]$',`Type`),'SubOn','SubMins'),'SubOff')) %>%
+          pivot_wider(.,id_cols=c('Match Details No.','subX'),names_from = 'ValueType', values_from = 'Value') %>%
+          pivot_longer(.,cols=matches('Sub(On|Off)'),names_to = 'OnOff',values_to = 'Player No') %>%
+          mutate('Mins Played' = ifelse(`OnOff`=='SubOff',`SubMins`,game_time-`SubMins`)),
+        by=c('Match Details No.','Player No'), all.x = TRUE) %>%
+  mutate('Appearances' = ifelse(is.na(`OnOff`),`Start Appearance`,1),
+         'Mins Played' = ifelse(is.na(`Mins Played`),`Start Appearance`*game_time,`Mins Played`)) %>%
+  group_by(`Player Name`) %>%
+  summarise('In Squad' = n_distinct(`Match Details No.`),
+            'Appearances' = sum(`Appearances`),
+            'Mins Played' = sum(`Mins Played`),
+            'Mins per Game' = ifelse(`Appearances`==0,0,`Mins Played`/`Appearances`))
+
+
 final <- data %>%
   select(matches('^(Match Details No|Start|Subst)')) %>%
   pivot_longer(.,cols=matches('^S'),names_to = 'Type Number',values_to = 'Player Name') %>%
