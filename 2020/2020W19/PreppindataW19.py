@@ -2,7 +2,6 @@ import pandas as pd
 import re
 
 game_time = 90
-
 data = pd.read_excel(pd.ExcelFile("E:/Liverpool Lineups.xlsx"),sheet_name=0, skiprows=4, header=[1,2]).dropna(axis=1, how='all')
 data.columns = [col[1] if re.match('^sub', str(col[1])) else col[0]+' '+str(col[1]) for col in data.columns.values]
 
@@ -10,7 +9,6 @@ player = data[[col for col in data.columns.values if re.match('^(Match Details N
 player = player.melt(id_vars=['Match Details No.','Match Details Formation'],value_name='Player Name', var_name='Type Number')
 player['Start Appearance'] = player['Type Number'].apply(lambda x: 1 if re.match('^Start', x) else 0)
 player['Player No'] = player['Type Number'].apply(lambda x: int(re.search('(\d+)$', x).group(1)))
-
 submap = data[[col for col in data.columns.values if re.match('^(Match Details No|sub)', col)]].copy()
 submap = submap.melt(id_vars='Match Details No.',value_name='Value', var_name='Type').dropna()
 submap['Value'] = submap['Value'].astype(int)
@@ -37,7 +35,6 @@ plist = pd.read_excel(pd.ExcelFile("E:/PlayerList.xlsx"),sheet_name=0)
 plist['Preferred Position'] = plist['Player Name'].apply(lambda x: re.search('([A-Z])(?=\))',x).group(1))
 plist['Player Name'] = plist['Player Name'].apply(lambda x: re.search('(\D+)(?=\()',x).group(1).strip())
 plist['Last Name'] = plist['Player Name'].apply(lambda x: re.sub('^\S+\s','',x).lower())
-
 position = pd.read_excel(pd.ExcelFile("E:/Formation Positions.xlsx"),sheet_name=0)
 
 output2 = pd.merge(player,submap,on=['Match Details No.','Player No'], how='left').rename(columns={'Match Details Formation':'Formation Name'})
