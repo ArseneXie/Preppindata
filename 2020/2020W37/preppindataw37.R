@@ -1,43 +1,43 @@
 library(dplyr)
 library(readxl)
 library(tidyr)
-library(splitstackshape)
+library(lubridate)
+library(bizdays)
 library(fuzzyjoin)
 
-xlsx <- "F:/Data/School Timetables-4.xlsx"
+Sys.setlocale("LC_ALL","English")
 
-supply <- read_excel(xlsx, sheet = 'Teachers') %>%
-  separate(`Ages Taught`, c('fromAge','toAge'),sep='-') %>%
-  cSplit(., 'Working Days', ',',type.convert = FALSE) %>%
-  pivot_longer(.,cols=starts_with('Working Days'),names_to = 'ToDrop', values_to = 'Working Days', values_drop_na = TRUE) %>%
-  group_by(`Name`,`Working Days`) %>%
-  mutate('Allocated Hours' = 6/n()) %>%
-  group_by(`Subject`) %>%
-  mutate('Potential Teachers Hours' = sum(`Allocated Hours`)) %>%
-  select(-c('ToDrop','Working Days','Allocated Hours')) %>%
-  distinct() %>%
-  rename('Subjects' = 'Subject')
+my_hol <- read_excel("F:/Data/Start Date.xlsx", sheet = "Holidays") %>%
+  summarise('Holidays'= sum(`Holidays`)) %>%
+  .[[1]]
+tw_hol <-read_excel("F:/Data/Taiwan Holidays.xlsx", col_types = c("numeric", "text", "skip", "skip"))
+start_date <- as.Date("2019/1/1")
+to_date <- as.Date("2020/9/11")
 
-final <- read_excel(xlsx, sheet = 'Students') %>%
-  cSplit(., 'Subject', '/') %>%
-  pivot_longer(.,cols=starts_with('Subject'),names_to = 'ToDrop', values_to = 'Subject', values_drop_na = TRUE) %>%
-  fuzzy_inner_join(.,read_excel(xlsx, sheet = 'Hours') %>% separate(`Age Group`, c('fromAge','toAge'),sep='-'),
-                   by = c('Age'='fromAge','Age'='toAge'),
-                   match_fun = list(`>=`, `<=`)) %>%
-  select(-c('ToDrop','fromAge','toAge')) %>%
-  group_by(`Subject`,`Age`) %>%
-  summarise('Students Count' = n(),
-            'Hours teaching per week' = first(`Hours teaching per week`)) %>%
-  fuzzy_inner_join(.,supply,
-                   by = c('Subject'='Subjects','Age'='fromAge','Age'='toAge'),
-                   match_fun = list(`==`,`>=`, `<=`)) %>%
-  merge(.,read_excel(xlsx, sheet = 'Rooms') %>% group_by(`Subjects`) %>% summarise('Capacity'=sum(`Capacity`)),by='Subjects') %>%
-  mutate('Classes required' = ceiling(`Students Count`/`Capacity`),
-         'Teaching Hours needed' = `Classes required`*`Hours teaching per week`) %>%
-  group_by(`Subject`) %>%
-  summarise('Potential Teachers Hours' = first(`Potential Teachers Hours`),
-            'Total Teaching Hours needed' = sum(`Teaching Hours needed`),
-            'Classes required' = sum(`Classes required`),
-            '% utilised' = round(`Total Teaching Hours needed`/`Potential Teachers Hours`*100))
+tw_hol_list <- tw_hol %>%
+  filter(grepl('.*to.*',`Date`)) %>%
+  separate(`Date`,c('From Date', 'To Date'), sep=' to ') %>%
+  mutate('From Date' = as.Date(paste(`From Date`,`Year`), format='%d %b %Y'),
+         'To Date' = as.Date(paste(`To Date`,`Year`), format='%d %b %Y'),
+         'Days' = time_length(`To Date` - `From Date`,unit='days'),
+         'Max Days' = max(`Days`)->>maxseq) %>%
+  fuzzy_inner_join(.,data.frame('Seq' =seq(0,maxseq)),
+                   by = c('Days'='Seq'),
+                   match_fun = list(`>=`)) %>%
+  mutate('Date' = `From Date`  %m+% days(`Seq`)) %>% 
+  select('Date') %>%
+  rbind(.,tw_hol %>%
+          filter(!grepl('.*to.*',`Date`)) %>%
+          mutate('Date' = as.Date(as.numeric(`Date`),origin = "1899-12-30"),
+                 'Excel Conv Year' = year(`Date`),
+                 'Date' = `Date` %m+% years(`Year`-`Excel Conv Year`)) %>% 
+          select('Date'))
+ 
+cal <- create.calendar('mycal', holidays=pull(tw_hol_list, `Date`), 
+                       weekdays=c("saturday", "sunday"),
+                       start.date = start_date, end.date = to_date, financial=FALSE)
+
+final <- data.frame('Start Date'=start_date, 'Today'=to_date,
+                   'Working Days'= bizdays(start_date %m+% days(1),to_date,cal)-my_hol)
 
 View(final)
