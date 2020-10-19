@@ -1,36 +1,51 @@
 library(dplyr)
+library(tidyr)
 library(readxl)
-library(stringr)
-library(purrr)
 library(lubridate)
 
-input <- "F:/Data/Prep Tips live chat logs.xlsx"
-data <-  input %>%
-  excel_sheets() %>%
-  set_names() %>%
-  map_df(
-    ~ read_excel(path = input, sheet = .x),
-    .id = 'Location') %>%
-  mutate('Location' = str_extract(`Location`,'^(\\w+)'),
-         'Date (GMT)' = as.POSIXct(paste('2020-10-07',format(`Time`, '%H:%M:%S')),format='%Y-%m-%d %H:%M:%S')
-         +hours(case_when(`Location`=='APAC'~-11,`Location`=='EMEA'~-1,`Location`=='AM'~5))) %>%
-  group_by(`Location`,`Who`) %>%
-  mutate('Seq' = row_number(`Date (GMT)`),
-         'Category' = if_else(`Seq`==1,'Intro',if_else(str_detect(`Comment`,'(\\?)$'),'Question','Answer'))) %>%
-  filter(!((`Who`=='Carl Allchin') & (`Seq`==1)))
+period <- data.frame(`Today` = as.Date('2020-10-09',format='%Y-%m-%d')) %>%
+  mutate('Week' = as.integer(strftime(`Today`,format = '%U')),
+         'Days' = as.integer(strftime(`Today`,format = '%w'))) %>%
+  merge(data.frame(`Offset` = seq(0, -1))) %>%
+  mutate('Category' = if_else(`Offset`==0,'This Year','Last Year'),
+         'Year' = as.integer(strftime(`Today`,format = '%Y'))+`Offset`,
+         'End Date' = as.Date(paste(`Year`,`Week`,`Days`),format='%Y %U %w'),
+         'WTD' = floor_date(`End Date`, 'weeks'),
+         'MTD' = floor_date(`End Date`, 'months'),
+         'YTD' = floor_date(`End Date`, 'years')) %>%
+  select(-c('Today','Week','Days','Offset')) %>%
+  pivot_longer(.,cols=ends_with('TD'), names_to='Time Period', values_to='Start Date')
 
-output1 <- data %>%
-  filter(`Category`=='Intro') %>%
-  mutate('City' = str_extract_all(`Comment`,'^([\\w\\s]+)'),
-         'Country' = if_else(`Location`=='AM','United States',trimws(str_extract_all(`Comment`,'(?<=,)([\\w\\s]+)'))),
-         'First Time Indicator?' = if_else(str_detect(tolower(`Comment`),'(first time)'),1,0)) %>%
-  select('Date (GMT)', 'Location', 'City', 'First Time Indicator?', 'Country', 'Who')
+txn <- read_excel('F:/Data/Transactions.xlsx') %>%
+  filter(`TransactionDate` >= period %>% summarise('min'= min(`Start Date`)) %>% .[[1]]) %>%
+  mutate('From Date' = as.Date(`TransactionDate`),
+         'To Date' = as.Date(`TransactionDate`),
+         'Year' = as.integer(strftime(`TransactionDate`,format = '%Y')),
+         'Source' = 'Transaction') %>%
+  select(c('Year', 'From Date', 'To Date', 'ProductName', 'Quantity', 'Income', 'Source'))
 
-output2 <- data %>%
-  filter(!(`Category`=='Intro')) %>%
-  rename('Question or Answer'='Category') %>%
-  group_by(`Location`,`Question or Answer`) %>%
-  summarise('Instances'=n())
+target <- read_excel('F:/Data/Targets.xlsx') %>%
+  rename('Quantity' = 'Quantity Target',
+         'Income' = 'Income Target') %>%
+  mutate('From Date'= floor_date(as.Date(paste0(`Year`,'-01-01'),format='%Y-%m-%d'),'weeks')+(`Week`-1)*7,
+         'To Date' = `From Date`+6,
+         'Source' = 'Target') %>%
+  select(-'Week')
+
+final <- rbind(txn, target) %>%
+  merge(., period, by='Year') %>%
+  filter((`From Date`>=`Start Date` & `To Date`<=`End Date`) | (`From Date`<=`End Date` & `To Date`>=`Start Date`)) %>%
+  rowwise() %>%
+  mutate('Category' = if_else(`Source`=='Transaction',`Category`,`Source`),
+         'Modifier' = as.integer(difftime(min(`End Date`,`To Date`),max(`Start Date`,`From Date`), units='day'))+1) %>%
+  ungroup() %>%
+  select(c('ProductName', 'Category', 'Time Period', 'Modifier', 'Quantity', 'Income')) %>%
+  pivot_longer(.,cols=c('Quantity', 'Income'), names_to='Metric', values_to='Value') %>%
+  group_by(`ProductName`,`Category`, `Time Period`, `Metric`) %>%
+  summarise('Value' = round(sum(if_else(`Category`=='Target',`Value`/7*`Modifier`,`Value`)))) %>%
+  pivot_wider(., names_from='Category', values_from='Value', values_fn=list(`Value`=sum)) %>%
+  mutate('% Differece to Last Year' = round(((`This Year`-`Last Year`)/`Last Year`),2),
+         '% Differece to Target' = round(((`This Year`-`Target`)/`Target`),2)) %>%
+  select(c('ProductName', 'Metric', 'Time Period', 'This Year', 'Last Year', 'Target', '% Differece to Last Year', '% Differece to Target'))
   
-View(output1)
-View(output2)
+View(final)

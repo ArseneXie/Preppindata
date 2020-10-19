@@ -1,5 +1,4 @@
 import pandas as pd
-import re
 import datetime 
 from datetime import datetime as dt,timedelta
 
@@ -31,11 +30,13 @@ final = final.merge(period, on='Year', how='inner')
 final['Category'] = final.apply(lambda x: x['Category'] if pd.isnull(x['Source']) else x['Source'], axis=1)
 final = final[((final['From Date']>=final['Start Date']) & (final['To Date']<=final['End Date']))
               | ((final['From Date']<=final['End Date']) & (final['To Date']>=final['Start Date']))].copy()
-
-final = final.groupby(['ProductName','Category', 'Time Period', 'Metric'], as_index=False).agg({'Who':'count'})
-
-final.columns
-
-output2 = data[~(data['Category']=='Intro')].copy()
-output2 = output2.groupby(['Location','Category'], as_index=False).agg({'Who':'count'})
-output2 = output2.rename(columns={'Category':'Question or Answer','Who':'Instances'})
+final['Modifier'] = final.apply(lambda x: (min(x['End Date'],x['To Date'])-max(x['Start Date'],x['From Date'])).days+1, axis=1)
+final = final[['ProductName', 'Category', 'Time Period', 'Modifier', 'Quantity', 'Income']].copy()
+final = final.melt(id_vars = ['ProductName', 'Category', 'Time Period', 'Modifier'], value_name = 'Value', var_name='Metric')
+final['Value'] = final.apply(lambda x: x['Value']/7*x['Modifier'] if x['Category']=='Target' else x['Value'], axis=1)
+final = final.groupby(['ProductName','Category', 'Time Period', 'Metric'], as_index=False).agg({'Value':'sum'})
+final['Value'] = final['Value'].apply(lambda x: round(x))
+final = final.pivot_table(index=['ProductName', 'Metric', 'Time Period'], columns='Category', values='Value', aggfunc=sum).reset_index()
+final['% Differece to Last Year'] = round((final['This Year']-final['Last Year'])/final['Last Year'],2)
+final['% Differece to Target'] = round((final['This Year']-final['Target'])/final['Target'],2)
+final = final[['ProductName', 'Metric', 'Time Period', 'This Year', 'Last Year', 'Target', '% Differece to Last Year', '% Differece to Target']]
