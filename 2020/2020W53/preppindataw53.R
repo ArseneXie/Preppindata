@@ -1,7 +1,9 @@
-library(readxl)
+library(readr)
 library(dplyr)
 library(tidyr)
 library(stringr)
+
+old_star <- read_csv("E:/Old Star Signs.csv", col_names = FALSE)
 
 
 finalA <- read_excel("F:/Data/USOpenWinners.xlsx") %>%
