@@ -1,29 +1,36 @@
 import pandas as pd
 import re
-from math import sqrt
+from datetime import datetime
 
-polygon_points = {'Round 1':[(1,0),(0,0),(0,1),(1,1)], 'Round 2':[(1,-1),(0,-1),(0,0),(1,0)],
-                  'Round 3':[(0,-1),(-1,-1),(-1,0),(0,0)], 'Round 4':[(0,0),(-1,0),(-1,1),(0,1)]}
+old_star = pd.concat([pd.read_csv(r"F:\Data\Old Star Signs.csv", header=None, usecols=[0,1], names=['Old Star Sign', 'DateRange']),
+                      pd.read_csv(r"F:\Data\Old Star Signs.csv", header=None, usecols=[2,3], names=['Old Star Sign', 'DateRange']),
+                      pd.read_csv(r"F:\Data\Old Star Signs.csv", header=None, usecols=[4,5], names=['Old Star Sign', 'DateRange'])]).dropna()
+old_star['Begin Date'] = old_star['DateRange'].apply(lambda x: pd.to_datetime('2020/'+re.search('^(\d+/\d+)', x).group(1),format='%Y/%m/%d').date())
+old_star['End Date'] = old_star['DateRange'].apply(lambda x: pd.to_datetime('2020/'+re.search('(\d+/\d+)$', x).group(1),format='%Y/%m/%d').date())
+old_star['End Date'] = old_star.apply(lambda x: x['End Date'].replace(year=2021) if x['End Date']<x['Begin Date'] else x['End Date'], axis=1)
 
-winner = pd.read_excel(pd.ExcelFile("F:/Data/USOpenWinners.xlsx"),sheet_name=0).drop('pos', axis=1)
-winner.columns = [c.title() for c in winner.columns]
-winner['Round Par'] = winner.apply(lambda x: round((x['Total']-(0 if x['To Par']=='E' else x['To Par']))/4), axis=1)
-winner = winner.melt(id_vars=[c for c in winner.columns if not re.match('^(Round\s\d)$',c)], var_name='Round Num', value_name='Round Score').drop('To Par', axis=1)
-winner['Round to Par'] = winner['Round Score'] - winner['Round Par'] 
-for i in range(4):
-    winner[f'Point{i+1}'] = winner['Round Num'].apply(lambda x: polygon_points[x][i])
-winner = winner.melt(id_vars=[c for c in winner.columns if not re.match('^(Point\d)$',c)], var_name='Point', value_name='Coordinate')
-winner['X Coordinate Polygon'] = winner.apply(lambda x: sqrt(x['Round Score'])*x['Coordinate'][0], axis=1)
-winner['Y Coordinate Polygon'] = winner.apply(lambda x: sqrt(x['Round Score'])*x['Coordinate'][1], axis=1)
-winner['Round Colors'] = winner['Round Num'].apply(lambda x: chr(64+int(re.search('(\d)$',x).group(1))))
+new_star= pd.read_csv(r"F:\Data\New Star Signs.csv", header=None, names=['SignStr'])
+new_star['New Star Sign'] = new_star['SignStr'].apply(lambda x: re.search('^(\w+)', x).group(1))
+new_star['From Date'] = new_star['SignStr'].apply(lambda x: pd.to_datetime('2020'+re.findall('(\w+)\s\d+', x)[0][0:3]+re.findall('\w+\s(\d+)', x)[0],format='%Y%b%d').date())
+new_star['To Date'] = new_star['SignStr'].apply(lambda x: pd.to_datetime('2020'+re.findall('(\w+)\s\d+', x)[1][0:3]+re.findall('\w+\s(\d+)', x)[1],format='%Y%b%d').date())
+new_star['Date Range'] = new_star['SignStr'].apply(lambda x: re.findall('\w+\s(\d+)', x)[0]+' '+re.findall('(\w+)\s\d+', x)[0][0:3]+' - '+
+                                                               re.findall('\w+\s(\d+)', x)[1]+' '+re.findall('(\w+)\s\d+', x)[1][0:3])
+new_star['To Date'] = new_star.apply(lambda x: x['To Date'].replace(year=2021) if x['To Date']<x['From Date'] else x['To Date'], axis=1)
 
-location = pd.read_excel(pd.ExcelFile("F:/Data/Location Prize Money.xlsx"),sheet_name=0)[['Year', 'Country', 'Venue', 'Location']]
+all_date = pd.read_csv(r"F:\Data\Scaffold.csv", parse_dates=['Date'], date_parser=lambda x: datetime.strptime(x, '%d/%m/%Y'))
+all_date['Date']=all_date['Date'].dt.date
+all_date['Birthday']=all_date['Date'].apply(lambda x: x.strftime('%b %d'))
 
-finalA = pd.merge(winner.drop('Coordinate', axis=1), location, on='Year')
-finalA['Decade'] = finalA['Year'].apply(lambda x: x//10*10)
-finalA['Row'] = finalA['Decade'].apply(lambda x: int((x - min(finalA['Decade']))/10+1))
-finalA['Column'] = finalA['Year'] - finalA['Decade'] + 1 
+all_date['dummy'] = 1
+old_star['dummy'] = 1
+new_star['dummy'] = 1 
 
-finalB = finalA.groupby('Decade',as_index=False).agg({'Round Score':[('Min Round Score', 'min'), ('Max Round Score', 'max')],
-                                                      'Total':[('Min Total Score', 'min'), ('Max Total Score', 'max')]})
-finalB.columns = [col[1] if col[1] else col[0] for col in finalB.columns.values]
+temp = pd.merge(all_date, old_star, on='dummy')
+olddate = temp[(temp['Date']>=temp['Begin Date']) & (temp['Date']<=temp['End Date'] )].copy()
+temp = pd.merge(all_date, new_star, on='dummy')
+newdate = temp[(temp['Date']>=temp['From Date']) & (temp['Date']<=temp['To Date'] )].copy()
+
+final = pd.merge(olddate, newdate, on='Birthday')[['Birthday', 'Old Star Sign', 'New Star Sign', 'Date Range']].copy()
+final['The Same'] = final.apply(lambda x: int(x['Old Star Sign']==x['New Star Sign']), axis=1)  
+final['The Same Cases'] = final['The Same'].groupby(final['Birthday']).transform('max')
+final = final[final['The Same Cases']==0][['Birthday', 'Old Star Sign', 'New Star Sign', 'Date Range']].copy()
