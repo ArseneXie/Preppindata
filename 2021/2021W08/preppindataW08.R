@@ -1,22 +1,22 @@
 library(readxl)
 library(dplyr)
-library(stringr)
+library(lubridate)
+library(fuzzyjoin)
 
-df <- read_excel("F:/Data/Shopping List and Ingredients.xlsx", sheet = "Keywords")
-keywd <- c(sapply(unlist(strsplit(df[['Animal Ingredients']],',\\s*')), tolower),
-           sapply(unlist(strsplit(df[['E Numbers']],',\\s*')),function(x) paste0('e',x)))
+xlsx <- "F:/Data/Copy of Karaoke Dataset.xlsx"
 
-shopping <- read_excel("F:/Data/Shopping List and Ingredients.xlsx", sheet = "Shopping List") %>%
-  mutate('Check' = strsplit(str_replace_all(tolower(`Ingredients/Allergens`),'\\W+',','),','),
-         'Contains' = lapply(`Check`, function(x) paste(sort(intersect(x, keywd)), collapse=', ')))
+final <- read_excel(xlsx, sheet = "Karaoke Choices", col_types = c("date", "text", "text")) %>%
+  arrange(`Date`) %>% 
+  mutate('Seq' = row_number(),
+         'Time between Prev Songs' = round(time_length(`Date`-lag(`Date`),'minutes'),0),
+         'Session #' = cumsum(if_else(`Seq`==1 | `Time between Prev Songs`>=59,1,0))) %>%
+  group_by(`Session #`) %>%
+  mutate('Song Order' = `Seq`-min(`Seq`)+1,
+         'Session Start Date' = min(`Date`),
+         'Session Early Date' = `Session Start Date` %m+% minutes(-10)) %>%
+  fuzzy_left_join(., read_excel(xlsx, sheet = "Customers", col_types = c("text", "date")), 
+                  by = c('Session Start Date'='Entry Time','Session Early Date'='Entry Time'),
+                  match_fun = list(`>=`, `<=`)) %>%
+  select(c('Session #', 'Customer ID', 'Song Order', 'Date', 'Artist', 'Song'))
 
-vegan_list <- shopping %>%
-  filter(`Contains`=='') %>%
-  select(c('Product', 'Description'))
-
-non_vegan_list <- shopping %>%
-  filter(`Contains`!='') %>%
-  select(c('Product', 'Description', 'Contains'))
-
-View(vegan_list)
-View(non_vegan_list)
+View(final)

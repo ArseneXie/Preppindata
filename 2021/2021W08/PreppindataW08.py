@@ -1,13 +1,21 @@
 import pandas as pd
-import re
 
-shopping = pd.read_excel(pd.ExcelFile("F:/Data/Shopping List and Ingredients.xlsx"),sheet_name='Shopping List')
-df = pd.read_excel(pd.ExcelFile("F:/Data/Shopping List and Ingredients.xlsx"),sheet_name='Keywords')
+xlsx = pd.ExcelFile("F:/Data/Copy of Karaoke Dataset.xlsx")
+kara = pd.read_excel(xlsx,sheet_name='Karaoke Choices')
+customer = pd.read_excel(xlsx,sheet_name='Customers').astype({'Customer ID': str}) 
 
-keywd = [c.lower().strip() for c in  df['Animal Ingredients'][0].split(',')]+ ['e'+c.strip() for c in df['E Numbers'][0].split(',')]
+kara = kara.sort_values(by='Date').reset_index(drop=True)
+kara['Seq'] = kara.index+1
+kara['Time between Prev Songs'] = (kara['Date']-kara['Date'].shift(1)).astype('timedelta64[m]')
+kara['Session #'] = kara.apply(lambda x: 1 if x['Seq']==1 or x['Time between Prev Songs']>=59 else 0, axis=1).cumsum()
+kara['Song Order'] = kara['Seq'] - kara['Seq'].groupby(kara['Session #']).transform('min') + 1
 
-shopping['check'] = shopping['Ingredients/Allergens'].apply(lambda x: re.sub('\W+',',',x.lower()).split(','))
-shopping['Contains'] = shopping['check'].apply(lambda x: ', '.join(sorted(list(set(x) & set(keywd)))))
+entry_range = kara.groupby(['Session #'], as_index=False).agg({'Date':'min'})
+entry_range['Date Early'] = entry_range['Date'].apply(lambda x: x+ pd.Timedelta(minutes=-10))
+entry_range['dummy'] = 1
+customer['dummy'] = 1
+match = pd.merge(entry_range,customer,on='dummy')
+match = match[(match['Entry Time']<=match['Date']) & (match['Entry Time']>=match['Date Early'])][['Session #','Customer ID']]
 
-vegan_list = shopping[shopping['Contains']==''][['Product','Description']].reset_index(drop=True)
-non_vegan_list = shopping[shopping['Contains']!=''][['Product','Description','Contains']].reset_index(drop=True)
+final = pd.merge(kara, match, how='left', on='Session #')
+final = final[['Session #', 'Customer ID', 'Song Order', 'Date', 'Artist', 'Song']]
