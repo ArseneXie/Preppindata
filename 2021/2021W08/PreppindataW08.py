@@ -19,3 +19,4 @@ match = match[(match['Entry Time']<=match['Date']) & (match['Entry Time']>=match
 
 final = pd.merge(kara, match, how='left', on='Session #')
 final = final[['Session #', 'Customer ID', 'Song Order', 'Date', 'Artist', 'Song']]
+ 

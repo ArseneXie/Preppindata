@@ -4,10 +4,10 @@ library(tidyr)
 library(stringr)
 library(splitstackshape)
 
+# Use the Gist: https://gist.github.com/sotoattanito/8e6fad4b7322ceae9f14f342985f1681
 round_half_up <- function (x, digits=0){
-  posneg = sign(x)
   z = trunc(abs(x) * 10 ^ (digits + 1)) / 10
-  z = floor(z * posneg + 0.5) / 10 ^ digits
+  z = floor(z * sign(x) + 0.5) / 10 ^ digits
   return(z)
   }
 
