@@ -40,7 +40,35 @@ library(purrr)
 df <-   evolution %>%
   select(c('Evolving from', 'Evolving to'))
 
+dk <- df %>%
+  filter(!(`Evolving from` %in% df$`Evolving to`)) %>%
+  mutate('Evolving to'=`Evolving from`,
+         'Evolving from'="root2")
 
+ds <- rbind(df,dk)
+
+ds <- data.frame(name = c("land", "water", "air", "car", "bicycle", "boat", "balloon", "airplane", "helicopter", "Ford", "BMW", "Airbus"), 
+                 parent = c("root", "root", "root", "land", "land", "water", "air", "air", "air", "car", "car", "airplane"))
+
+library(data.tree)  
+tkt <- ToDataFrameTree(ds)
+
+print(tkt, limit = 15)
+
+tree <- FromDataFrameNetwork(ds)
+#Getting the required format then becomes trivial as we can use the hierarchy infrastructure from data.tree:
+  
+tkt<- ToDataFrameTree(tree, 
+                level1 = function(x) x$path[2],
+                level2 = function(x) x$path[3],
+                level3 = function(x) x$path[4],
+                level_number = function(x) x$level - 1)[-1,-1]
+
+print(tkt, limit = 15)
+
+plot(tkt)
+
+tkt$Climb(position = c(2, 3, 4))$path
 
 V(df_g)
 subcomponent(df_g, .x, mode="out")
