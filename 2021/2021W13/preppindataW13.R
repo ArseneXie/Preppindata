@@ -1,28 +1,37 @@
 library(readr)
 library(dplyr)
 library(tidyr)
-library(stringr)
+library(purrr)
 
-Sys.setlocale("LC_ALL","English")
+df <- dir("F:/Data/2021W13", pattern = "*.csv") %>%
+  map(~ read_csv(file.path("F:/Data/2021W13", .))) %>%
+  reduce(rbind) %>%
+  filter(`Position`!='Goalkeeper' & `Appearances`>0) %>%
+  mutate_at(vars('Penalties scored','Freekicks scored'), ~replace_na(., 0)) %>%
+  rename('Total Goals' = 'Goals') %>%
+  mutate('Open Play Goals' = `Total Goals` - `Penalties scored` - `Freekicks scored`) %>%
+  group_by(`Name`, `Position`) %>%
+  summarise('Appearances' = sum(`Appearances`),
+            'Open Play Goals' = sum(`Open Play Goals`),
+            'Total Goals' = sum(`Total Goals`),
+            'Headed goals' = sum(`Headed goals`),
+            'Goals with right foot' = sum(`Goals with right foot`),
+            'Goals with left foot' = sum(`Goals with left foot`),
+            'Open Play Goals / Game' = `Open Play Goals`/`Appearances`, 
+            .groups = 'drop')
 
-trans_date <- function (x){
-  d <- as.Date(paste0('01-',x), format='%d-%b-%y')
-  return(d)
-}
+finalA <- df %>%
+  mutate('Rank' = rank(desc(`Open Play Goals`), ties.method='min')) %>%
+  filter(`Rank`<=20) %>%
+  select(c('Rank', 'Name', 'Position', 'Open Play Goals', 'Appearances', 'Open Play Goals / Game', 
+           'Headed goals', 'Goals with right foot', 'Goals with left foot', 'Total Goals'))
 
-final <- read_csv("F:/Data/Tourism Input.csv", col_types = cols(.default = "c")) %>%
-  filter(`Unit-Detail`=='Tourists' & `Series-Measure`!='Total tourist arrivals') %>%
-  pivot_longer(matches('\\w{3}-\\d{2}') , names_to = 'Month', values_to='Original Tourists',
-               names_transform = list(`Month` = trans_date),
-               values_transform = list(`Original Tourists`= as.integer), values_drop_na = TRUE) %>%
-  mutate('CountryLevel' = str_detect(`Hierarchy-Breakdown`,'(.*/){3}\\s(.*)'),
-         'Breakdown' = if_else(`CountryLevel`,
-                               str_extract(`Hierarchy-Breakdown`,'(?<=/\\s)([^/]*)$'),
-                               str_extract(`Series-Measure`,'(?<=(from|-)\\s)(.*)')),
-         'Country' = if_else(`CountryLevel`,str_replace(`Series-Measure`,'.*from\\s(?:the\\s)*',''),'Unknown')) %>%
-  group_by(`Month`,`Breakdown`) %>%
-  mutate('Number of Tourists' = `Original Tourists` + 
-           if_else(`CountryLevel`, 0, sum(if_else(`CountryLevel`,-1*`Original Tourists`,0)))) %>%
-  select(c('Month', 'Breakdown', 'Country', 'Number of Tourists'))
+finalB <- df %>%
+  group_by(`Position`) %>%
+  mutate('Rank' = rank(desc(`Open Play Goals`), ties.method='min')) %>%
+  filter(`Rank`<=20) %>%
+  select(c('Rank', 'Name', 'Position', 'Open Play Goals', 'Appearances', 'Open Play Goals / Game', 
+           'Headed goals', 'Goals with right foot', 'Goals with left foot', 'Total Goals'))
 
-View(final)
+View(finalA)
+View(finalB)

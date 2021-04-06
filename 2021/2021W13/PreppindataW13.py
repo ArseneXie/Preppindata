@@ -1,20 +1,26 @@
 import pandas as pd
-import re
+import os
 
-tourism = pd.read_csv("F:\\Data\\Tourism Input.csv")
-tourism = tourism[(tourism['Unit-Detail']=='Tourists') & (tourism['Series-Measure']!='Total tourist arrivals')]
-tourism = tourism.melt(id_vars=[c for c in tourism.columns if not re.match('\w{3}-\d{2}',c)],
-                          value_name='Original Tourists', var_name='Month')
-tourism['Original Tourists'] = tourism['Original Tourists'].apply(lambda x: pd.to_numeric(x, errors='coerce'))
-tourism = tourism.dropna()
-tourism['Month'] = tourism['Month'].apply(lambda x: pd.to_datetime(x,format='%b-%y').date())
-tourism['Breakdown'] = tourism.apply(lambda x: re.search('(?:.*/){3}\s(.*)',x['Hierarchy-Breakdown']).group(1) if re.search('(?:.*/){3}\s(.*)',x['Hierarchy-Breakdown']) 
-                                     else re.search('(?:from|-)\s(.*)',x['Series-Measure']).group(1), axis=1) 
-tourism['Country'] = tourism.apply(lambda x: re.search('from\s(?:the\s)*(.*)',x['Series-Measure']).group(1) if re.search('(?:.*/){3}\s(.*)',x['Hierarchy-Breakdown']) 
-                                   else 'Unknown', axis=1) 
+os.chdir(r'F:\Data\2021W13')
+mergedata = []
+for files in [f for f in os.listdir('.')]:
+    dataset = pd.read_csv(files)
+    mergedata.append(dataset)    
+df = pd.concat(mergedata)
+df = df[(df['Position']!='Goalkeeper') & (df['Appearances']>0)].rename(columns={'Goals':'Total Goals'})  
+df[['Penalties scored','Freekicks scored']] = df[['Penalties scored','Freekicks scored']].fillna(value=0).astype('int64')
+df['Open Play Goals'] = df['Total Goals'] - df['Penalties scored'] - df['Freekicks scored']
+df = df.groupby(['Name', 'Position'], as_index=False).agg({'Appearances':'sum', 'Open Play Goals':'sum',
+                                                           'Total Goals':'sum', 'Headed goals':'sum',
+                                                           'Goals with right foot':'sum', 'Goals with left foot':'sum'})
+df[['Headed goals','Goals with right foot','Goals with left foot']] = df[['Headed goals','Goals with right foot','Goals with left foot']].astype('int64')
+df['Open Play Goals / Game'] = (df['Open Play Goals'] / df['Appearances'] ).astype('float')
 
-tourism['Modifier'] = tourism.apply(lambda x: 0 if x['Country']=='Unknown' else -1*x['Original Tourists'], axis=1)
-tourism['Breakdown-Modifier'] = tourism['Modifier'].groupby([tourism['Breakdown'],tourism['Month']]).transform('sum')
-tourism['Number of Tourists'] = tourism.apply(lambda x: x['Original Tourists'] + (x['Breakdown-Modifier'] if x['Country']=='Unknown' else 0), axis=1)
-
-final = tourism[['Month', 'Breakdown', 'Country', 'Number of Tourists']].copy()
+finalA = df.copy()
+finalA['Rank'] = finalA['Open Play Goals'].rank(method='min', ascending=False).astype(int)
+finalA = finalA[finalA['Rank']<=20][['Rank', 'Name', 'Position', 'Open Play Goals', 'Appearances', 'Open Play Goals / Game', 
+                                     'Headed goals', 'Goals with right foot', 'Goals with left foot', 'Total Goals']]
+finalB = df.copy()
+finalB['Rank'] = finalB.groupby('Position')['Open Play Goals'].rank(method='min', ascending=False).astype(int)
+finalB = finalB[finalB['Rank']<=20][['Rank', 'Name', 'Position', 'Open Play Goals', 'Appearances', 'Open Play Goals / Game', 
+                                     'Headed goals', 'Goals with right foot', 'Goals with left foot', 'Total Goals']]
