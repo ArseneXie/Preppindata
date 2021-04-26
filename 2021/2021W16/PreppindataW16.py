@@ -1,26 +1,30 @@
 import pandas as pd
-import os
+import re
 
-os.chdir(r'F:\Data\2021W13')
-mergedata = []
-for files in [f for f in os.listdir('.')]:
-    dataset = pd.read_csv(files)
-    mergedata.append(dataset)    
-df = pd.concat(mergedata)
-df = df[(df['Position']!='Goalkeeper') & (df['Appearances']>0)].rename(columns={'Goals':'Total Goals'})  
-df[['Penalties scored','Freekicks scored']] = df[['Penalties scored','Freekicks scored']].fillna(value=0).astype('int64')
-df['Open Play Goals'] = df['Total Goals'] - df['Penalties scored'] - df['Freekicks scored']
-df = df.groupby(['Name', 'Position'], as_index=False).agg({'Appearances':'sum', 'Open Play Goals':'sum',
-                                                           'Total Goals':'sum', 'Headed goals':'sum',
-                                                           'Goals with right foot':'sum', 'Goals with left foot':'sum'})
-df[['Headed goals','Goals with right foot','Goals with left foot']] = df[['Headed goals','Goals with right foot','Goals with left foot']].astype('int64')
-df['Open Play Goals / Game'] = (df['Open Play Goals'] / df['Appearances'] ).astype('float')
+df = pd.read_csv('F:\\Data\\PL Fixtures.csv').dropna()
+big6=['Arsenal','Chelsea','Liverpool','Man Utd','Man City','Spurs']
 
-finalA = df.copy()
-finalA['Rank'] = finalA['Open Play Goals'].rank(method='min', ascending=False).astype(int)
-finalA = finalA[finalA['Rank']<=20][['Rank', 'Name', 'Position', 'Open Play Goals', 'Appearances', 'Open Play Goals / Game', 
-                                     'Headed goals', 'Goals with right foot', 'Goals with left foot', 'Total Goals']]
-finalB = df.copy()
-finalB['Rank'] = finalB.groupby('Position')['Open Play Goals'].rank(method='min', ascending=False).astype(int)
-finalB = finalB[finalB['Rank']<=20][['Rank', 'Name', 'Position', 'Open Play Goals', 'Appearances', 'Open Play Goals / Game', 
-                                     'Headed goals', 'Goals with right foot', 'Goals with left foot', 'Total Goals']]
+def get_position(df):
+    df['Home Score'] = df['Result'].apply(lambda x: int(re.search('^(\d+)',x).group(1)))
+    df['Away Score'] = df['Result'].apply(lambda x: int(re.search('(\d+)$',x).group(1)))
+    df['Home Goal Difference'] = df['Home Score'] - df['Away Score']
+    df['Away Goal Difference'] = -1*df['Home Goal Difference']
+    df['Home Point'] = df['Home Goal Difference'].apply(lambda x: 3 if x>0 else 1 if x==0 else 0)
+    df['Away Point'] = df['Away Goal Difference'].apply(lambda x: 3 if x>0 else 1 if x==0 else 0)
+    home = df[[c for c in df.columns if c[0:4]=='Home']].copy()
+    home.columns = ['Team', 'Score', 'Goal Difference', 'Total Points']
+    away = df[[c for c in df.columns if c[0:4]=='Away']].copy()
+    away.columns = home.columns 
+    
+    final = pd.concat([home, away])
+    final['Total Games Played'] = 1
+    final = final.groupby('Team', as_index=False).agg({'Total Games Played':'sum', 'Total Points':'sum', 'Goal Difference':'sum'})
+    final['Position'] = final[['Total Points', 'Goal Difference']].apply(tuple,axis=1).rank(method='dense',ascending=False).astype(int)
+    return final[['Position', 'Team', 'Total Games Played', 'Total Points', 'Goal Difference']].copy()
+
+finalA = get_position(df)
+
+finalB = get_position(df[~(df['Home Team'].isin(big6) | df['Away Team'].isin(big6))].copy())
+finalB = pd.merge(finalB, finalA[['Team','Position']].rename(columns={'Position':'Position Original'}), on='Team')
+finalB['Position Change'] = finalB['Position Original'] - finalB['Position'] 
+finalB = finalB[['Position Change', 'Position', 'Team', 'Total Games Played', 'Total Points', 'Goal Difference']]
