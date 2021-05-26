@@ -1,19 +1,26 @@
 import pandas as pd
+import re
 
-task_list = ['Scope', 'Build', 'Deliver']
-final = pd.read_excel(pd.ExcelFile("F:/Data/PD 2021 Wk 18 Input.xlsx"),sheet_name=0).rename(
-    columns={'Completed In Days from Scheduled Date':'Days Difference to Schedule'})
+xlsx = pd.ExcelFile("F:/Data/PD 2021 Week 19 Input.xlsx")
 
-final['Completed Date'] = final.apply(lambda x: x['Scheduled Date'] + pd.DateOffset(days=x['Days Difference to Schedule']), axis=1)
-final['Completed Weekday'] = final['Completed Date'].dt.strftime('%A')
-final['Scheduled Date'] = final['Scheduled Date'].dt.date
-final['Completed Date'] = final['Completed Date'].dt.date
+lookup = {}
+for sheet in [sh for sh in xlsx.sheet_names if re.match('.*Lookup Table$',sh)]:
+    df = pd.read_excel(xlsx,sheet)
+    col = df.columns[1]
+    df.columns = ['Code', 'Name']
+    df['Code'] = df['Code'].str.lower()
+    lookup[col] = {k:v[0] for (k,v) in df.set_index('Code').T.to_dict('list').items()}
 
-for tk in task_list:
-    final[f'For {tk} Date'] = final.apply(lambda x: str(x['Completed Date']) if x['Task']==tk else '', axis=1)
-    final[f'{tk} Date'] = final[f'For {tk} Date'].groupby([final['Project'],final['Sub-project']]).transform('max')
-final['Scope to Build Time'] = final.apply(lambda x: (pd.to_datetime(x['Build Date'])-pd.to_datetime(x['Scope Date'])).days, axis=1)    
-final['Build to Delivery Time'] = final.apply(lambda x: (pd.to_datetime(x['Deliver Date'])-pd.to_datetime(x['Build Date'])).days, axis=1)   
-
-final = final[['Project', 'Sub-project', 'Owner', 'Scheduled Date', 'Completed Date', 'Completed Weekday',
-               'Task', 'Scope to Build Time', 'Build to Delivery Time', 'Days Difference to Schedule']].copy()
+sched =  pd.read_excel(xlsx,'Project Schedule Updates')
+sched['Week'] = sched['Week'].apply(lambda x: f'Week {x}')
+sched['Commentary'] = sched['Commentary'].apply(lambda x: re.sub('(\s+)(?=\[)','@',x))
+sched = pd.concat([sched['Week'], 
+                   pd.DataFrame([map(str.strip, x) \
+                                 for x in sched['Commentary'].str.split('@').values.tolist()])],
+                  axis=1, sort=False)
+sched = sched.melt(id_vars='Week', value_name='Commentary', var_name='ToDrop').drop('ToDrop', axis=1).dropna().reset_index(drop=True)
+sched['Detail'] = sched['Commentary'].apply(lambda x: re.search('(?<=\]\s)(.*)',x).group(1))
+sched['Days Noted'] = sched['Commentary'].apply(lambda x: int(re.search('(\d+)(?=\sday)',x).group(1)) if re.search('(\d+)(?=\sday)',x) else None)
+for c in [('Name','(\w+)(?=\.$)'),('Project','(?<=\[)(\w+)'),('Sub-Project','(?<=/)(Mar|Op)'),('Task','(\w+)(?=\])')]:
+    sched[c[0]] = sched['Commentary'].apply(lambda x: lookup[c[0]][(re.search(c[1],x).group(1)).lower()])
+sched = sched[['Week', 'Project', 'Sub-Project', 'Task', 'Name', 'Days Noted', 'Detail']]    

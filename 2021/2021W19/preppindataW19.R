@@ -1,19 +1,24 @@
 library(readxl)
 library(dplyr)
-library(lubridate)
+library(stringr)
+library(splitstackshape)
 
-Sys.setlocale("LC_ALL","English")
+xlsx <- "F:/Data/PD 2021 Week 19 Input.xlsx"
+final <- read_excel(xlsx,'Project Schedule Updates') %>%
+  mutate('Week' = paste('Week',`Week`),
+         'Commentary' = str_replace_all(`Commentary`,'(\\s+)(?=\\[)','@')) %>%
+  cSplit(., 'Commentary', '@') %>%
+  pivot_longer(cols=-'Week', names_to='toDrop', values_to = 'Commentary', values_drop_na=TRUE) %>%
+  mutate('Project Code' = str_extract(`Commentary`,'(?<=\\[)(\\w+)'),
+         'Sub-Project Code' = str_to_lower(str_extract(`Commentary`,'(?<=/)(Mar|Op)')),
+         'Task Code' = str_to_title(str_extract(`Commentary`,'(\\w+)(?=\\])')),
+         'Abbreviation' = str_to_title(str_extract(`Commentary`,'(\\w+)(?=\\.$)')),
+         'Days Noted' = as.integer(str_extract(`Commentary`,'(\\d+)(?=\\sday)')),
+         'Detail' = str_extract(`Commentary`,'(?<=\\]\\s)(.*)')) %>%
+  merge(., read_excel(xlsx,'Project Lookup Table'), on='Project Code') %>%
+  merge(., read_excel(xlsx,'Sub-Project Lookup Table'), on='Sub-Project Code') %>%
+  merge(., read_excel(xlsx,'Task Lookup Table'), on='Task Code') %>%
+  merge(., read_excel(xlsx,'Owner Lookup Table'), on='Abbreviation') %>%
+  select(c('Week', 'Project', 'Sub-Project', 'Task', 'Name', 'Days Noted', 'Detail'))
 
-final <- read_excel("F:/Data/PD 2021 Wk 18 Input.xlsx") %>%
-  rename('Days Difference to Schedule' = 'Completed In Days from Scheduled Date') %>%
-  group_by(`Project`,`Sub-project`) %>%
-  mutate('Completed Date' = as.Date(`Scheduled Date` %m+% days(`Days Difference to Schedule`)),
-         'Completed Weekday' = strftime(`Completed Date`,'%A'),
-         'Scope to Build Time' = time_length(max(if_else(`Task`=='Build',`Completed Date`, as.Date('1990-01-01')))-
-                                               max(if_else(`Task`=='Scope',`Completed Date`, as.Date('1990-01-01'))),'day'),
-         'Build to Delivery Time' = time_length(max(if_else(`Task`=='Deliver',`Completed Date`, as.Date('1990-01-01')))-
-                                               max(if_else(`Task`=='Build',`Completed Date`, as.Date('1990-01-01'))),'day')) %>%
-  select(c('Project', 'Sub-project', 'Owner', 'Scheduled Date', 'Completed Date', 'Completed Weekday',
-           'Task', 'Scope to Build Time', 'Build to Delivery Time', 'Days Difference to Schedule'))
-  
 View(final)
