@@ -1,19 +1,20 @@
 import pandas as pd
+from datetime import datetime as dt
 
-task_list = ['Scope', 'Build', 'Deliver']
-final = pd.read_excel(pd.ExcelFile("F:/Data/PD 2021 Wk 18 Input.xlsx"),sheet_name=0).rename(
-    columns={'Completed In Days from Scheduled Date':'Days Difference to Schedule'})
+out_file = "F:/Data/prepindata2021w20py.xlsx"
 
-final['Completed Date'] = final.apply(lambda x: x['Scheduled Date'] + pd.DateOffset(days=x['Days Difference to Schedule']), axis=1)
-final['Completed Weekday'] = final['Completed Date'].dt.strftime('%A')
-final['Scheduled Date'] = final['Scheduled Date'].dt.date
-final['Completed Date'] = final['Completed Date'].dt.date
+complaints = pd.read_csv("F:/Data/Prep Air Complaints - Complaints per Day.csv",
+                         parse_dates=['Date'], date_parser=lambda x: dt.strptime(x, '%d/%m/%Y'))
+complaints['Date'] = complaints['Date'].dt.date
+complaints['Mean'] = complaints['Complaints'].groupby([complaints['Week']]).transform('mean')
+complaints['Standard Deviation'] = complaints['Complaints'].groupby([complaints['Week']]).transform('std')
 
-for tk in task_list:
-    final[f'For {tk} Date'] = final.apply(lambda x: str(x['Completed Date']) if x['Task']==tk else '', axis=1)
-    final[f'{tk} Date'] = final[f'For {tk} Date'].groupby([final['Project'],final['Sub-project']]).transform('max')
-final['Scope to Build Time'] = final.apply(lambda x: (pd.to_datetime(x['Build Date'])-pd.to_datetime(x['Scope Date'])).days, axis=1)    
-final['Build to Delivery Time'] = final.apply(lambda x: (pd.to_datetime(x['Deliver Date'])-pd.to_datetime(x['Build Date'])).days, axis=1)   
-
-final = final[['Project', 'Sub-project', 'Owner', 'Scheduled Date', 'Completed Date', 'Completed Weekday',
-               'Task', 'Scope to Build Time', 'Build to Delivery Time', 'Days Difference to Schedule']].copy()
+with pd.ExcelWriter(out_file) as writer:  
+    for i in range(3):
+        df = complaints.copy()
+        df['Lower Control Limit'] = df['Mean'] - df['Standard Deviation']*(i+1)
+        df['Upper Control Limit'] = df['Mean'] + df['Standard Deviation']*(i+1)
+        df['Variation'] = df['Upper Control Limit'] - df['Lower Control Limit']
+        df['Outlier'] = df.apply(lambda x: 'Inside' if x['Upper Control Limit']>=x['Complaints']>=x['Lower Control Limit'] else 'Outside', axis=1)
+        df = df[df['Outlier']=='Outside']
+        df.to_excel(writer, sheet_name=f'{i+1}SD', index=False)  

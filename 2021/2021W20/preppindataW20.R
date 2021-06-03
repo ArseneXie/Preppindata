@@ -1,19 +1,22 @@
-library(readxl)
 library(dplyr)
-library(lubridate)
+library(readr)
+library(openxlsx)
 
-Sys.setlocale("LC_ALL","English")
+Complaints <- read_csv("F:/Data/Prep Air Complaints - Complaints per Day.csv", 
+                       col_types = cols(Date = col_date(format = "%d/%m/%Y"))) %>%
+  group_by(`Week`) %>%
+  mutate('Mean' = mean(`Complaints`),
+         'Standard Deviation' = sd(`Complaints`))
 
-final <- read_excel("F:/Data/PD 2021 Wk 18 Input.xlsx") %>%
-  rename('Days Difference to Schedule' = 'Completed In Days from Scheduled Date') %>%
-  group_by(`Project`,`Sub-project`) %>%
-  mutate('Completed Date' = as.Date(`Scheduled Date` %m+% days(`Days Difference to Schedule`)),
-         'Completed Weekday' = strftime(`Completed Date`,'%A'),
-         'Scope to Build Time' = time_length(max(if_else(`Task`=='Build',`Completed Date`, as.Date('1990-01-01')))-
-                                               max(if_else(`Task`=='Scope',`Completed Date`, as.Date('1990-01-01'))),'day'),
-         'Build to Delivery Time' = time_length(max(if_else(`Task`=='Deliver',`Completed Date`, as.Date('1990-01-01')))-
-                                               max(if_else(`Task`=='Build',`Completed Date`, as.Date('1990-01-01'))),'day')) %>%
-  select(c('Project', 'Sub-project', 'Owner', 'Scheduled Date', 'Completed Date', 'Completed Weekday',
-           'Task', 'Scope to Build Time', 'Build to Delivery Time', 'Days Difference to Schedule'))
-  
-View(final)
+NSD <- function(N){
+  df <-Complaints %>%
+    mutate('Lower Control Limit' = `Mean`-`Standard Deviation`*N,
+           'Upper Control Limit' = `Mean`+`Standard Deviation`*N,
+           'Variation' = `Upper Control Limit`-`Lower Control Limit`,
+           'Outlier' = if_else(`Upper Control Limit`>=`Complaints` & `Complaints`>=`Lower Control Limit`,'Inside','Outside')) %>%
+    filter(`Outlier`=='Outside')
+  return(df)
+}
+
+fin_sheet <- list("1SD" = NSD(1), "2SD" = NSD(2), "3SD" = NSD(3))
+write.xlsx(fin_sheet, file = "F:/Data/prepindata2021w20r.xlsx")
