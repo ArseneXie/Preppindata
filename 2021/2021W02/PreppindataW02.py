@@ -3,7 +3,7 @@ from datetime import datetime as dt
 import re
 
 df = pd.read_csv(r'F:/Data/PD 2021 Wk 2 Input - Bike Model Sales.csv', parse_dates=['Order Date','Shipping Date'],
-                 date_parser=lambda x: dt.strptime(x, '%d/%m/%Y'))
+                 date_parser=lambda x: dt.strptime(x, '%d/%m/%Y') if re.match('\d+/\d+/\d+', x) else dt.strptime(x, '%d-%m-%Y'))
 
 df['Brand'] = df['Model'].apply(lambda x: re.sub('[^A-Z]','',x))
 df['Order Value'] = df['Quantity']*df['Value per Bike']

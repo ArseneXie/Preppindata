@@ -2,7 +2,7 @@ import pandas as pd
 
 xlsx = pd.ExcelFile(r'F:\Data\PD 2021 Wk 3 Input.xlsx')
 temp = []
-for sheet in [sh for sh in xlsx.sheet_names]:
+for sheet in xlsx.sheet_names:
     df = pd.read_excel(xlsx,sheet)
     df.insert(0,'Store',sheet)
     temp.append(df)
