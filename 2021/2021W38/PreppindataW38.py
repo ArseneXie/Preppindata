@@ -1,28 +1,19 @@
 import pandas as pd
 
-xlsx = pd.ExcelFile(r"F:\Data\Trend Input.xlsx")
+xlsx = pd.ExcelFile(r"C:\Data\PreppinData\Trilogies Input.xlsx")
 
-timeline = pd.read_excel(xlsx,'Timeline', skiprows=2)
-timeline['Week'] = timeline['Week'].dt.date
-timeline = timeline.melt(id_vars='Week', value_name='Index', var_name='Search Term')
-timeline['Search Term'] = timeline['Search Term'].replace('(:.*)','', regex = True)
-timeline['Avg Index'] = round(timeline['Index'].groupby(timeline['Search Term']).transform('mean'),1)
-timeline['Index Peak'] = timeline['Index'].groupby(timeline['Search Term']).transform('max')
-timeline['Index Peak Week'] = timeline.apply(lambda x: x['Week'] if x['Index']==x['Index Peak'] else max(timeline['Week']), axis=1)
-timeline['First Peak'] = timeline['Index Peak Week'].groupby(timeline['Search Term']).transform('min')
-timeline['Year'] = timeline['Week'].apply(lambda x: x.year+1 if x.month>=9 else x.year)
-timeline = timeline[timeline['Year']>=max(timeline['Year'])-1].copy()
-timeline['YearMeasure'] = timeline['Year'].apply(lambda x: f'{str(x-1)}/{str(x)[2:]} avg index')
-timeline = timeline.drop(['Week', 'Index Peak Week', 'Year'], axis=1)
+top30 = pd.read_excel(xlsx,'Top 30 Trilogies')
+top30['Trilogy'] = top30['Trilogy'].str.replace('\s+trilogy$','', regex=True)
 
-country = pd.read_excel(xlsx,'Country Breakdown', skiprows=2).dropna()
-country = country.melt(id_vars='Country', value_name='Percentage', var_name='Search Term')
-country['Search Term'] = country['Search Term'].replace('(:.*)','', regex = True)
-country = country.loc[country.reset_index().groupby(['Search Term'])['Percentage'].idxmax()][['Search Term','Country']]
+films = pd.read_excel(xlsx,'Films')
+temp = films['Number in Series'].str.split('/', n = 1, expand = True) 
+films['Film Order'] = temp[0].astype('int64') 
+films['Total Films in Series'] = temp[1].astype('int64') 
+films['Trilogy Average'] = films['Rating'].groupby(films['Trilogy Grouping']).transform('mean')
+films['Trilogy Highest'] = films['Rating'].groupby(films['Trilogy Grouping']).transform('max')
+sort_cols = ['Trilogy Average', 'Trilogy Highest']
+films['Trilogy Ranking'] = films.sort_values(sort_cols, ascending=False).groupby(sort_cols, sort=False).ngroup() + 1
 
-final = timeline.pivot_table(index=[c for c in timeline.columns if c not in ['Index','YearMeasure']], 
-                             columns='YearMeasure', values='Index', aggfunc='mean').reset_index()
-final['Status'] = final.apply(lambda x: 'Still Trendy' if x['2020/21 avg index']>=x['2019/20 avg index'] else 'Lockdown Fad', axis=1)
-final['2020/21 avg index'] = round(final['2020/21 avg index'],1)
-final = final.merge(country, on='Search Term').rename(columns={'Country':'Country with highest percentage'})
-final = final[['Search Term', 'Status', '2020/21 avg index', 'Avg Index', 'Index Peak', 'First Peak', 'Country with highest percentage']]
+final = pd.merge(films, top30, on='Trilogy Ranking').sort_values('Trilogy Ranking')
+final['Trilogy Average'] = round(final['Trilogy Average'],1)
+final = final[['Trilogy Ranking','Trilogy','Trilogy Average','Film Order','Title','Rating','Total Films in Series']].copy()
