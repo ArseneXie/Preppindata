@@ -17,3 +17,11 @@ films['Trilogy Ranking'] = films.sort_values(sort_cols, ascending=False).groupby
 final = pd.merge(films, top30, on='Trilogy Ranking').sort_values('Trilogy Ranking')
 final['Trilogy Average'] = round(final['Trilogy Average'],1)
 final = final[['Trilogy Ranking','Trilogy','Trilogy Average','Film Order','Title','Rating','Total Films in Series']].copy()
+
+
+# =============================================================================
+# #another ranking method for multiple columns
+# sort_cols = ['Trilogy Average', 'Trilogy Highest']
+# films['Ranking'] = films[sort_cols].apply(tuple,axis=1).rank(method='dense',ascending=False).astype(int)
+# 
+# =============================================================================
