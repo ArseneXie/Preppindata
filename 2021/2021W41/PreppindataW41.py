@@ -1,19 +1,20 @@
 import pandas as pd
+import numpy as np
 import re
 
-process = pd.read_csv("C:\\Data\\PreppinData\\Bike Painting Process - Painting Process.csv")
-process['Datetime'] = process.apply(lambda x: pd.to_datetime(f"{x['Date']} {x['Time']}"), axis=1)
-process = process.groupby(['Batch No.']).apply(pd.DataFrame.sort_values, 'Datetime', ascending=True).reset_index(drop=True)
- 
-for attr in ['Bike Type', 'Batch Status', 'Name of Process Stage']:
-    process[attr] = process.apply(lambda x: x['Data Value'] if x['Data Parameter']==attr else None, axis=1)
-    process[attr] = process.groupby(['Batch No.'])[attr].ffill() 
-    
-process = process[(process['Data Type']=='Process Data') & (process['Data Parameter']!='Name of Process Stage')]
-for vtype in ['Actual', 'Target']:
-    process[vtype] = process.apply(lambda x: float(x['Data Value']) if re.match(f'^({vtype})',x['Data Parameter']) else None, axis=1)
-process['Data Parameter'] = process['Data Parameter'].apply(lambda x: re.sub('^(\w+\s)','',x))
-process = process[['Batch No.', 'Bike Type', 'Batch Status', 'Name of Process Stage',
-                   'Data Parameter', 'Actual', 'Target', 'Datetime']]
-   
+stats = pd.read_csv("C:\\Data\\PreppinData\\Southend Stats.csv", sep='\s+')
+stats = stats.rename(columns={stats.columns[-2]:'Pts'})
+stats= stats.sort_values(by='SEASON')
+stats['Special Circumstances'] = stats.apply(lambda x: 'Incomplete' if x['SEASON']==stats['SEASON'].max() else 
+                                             'Abandoned due to WW2' if x['SEASON'][0:4]=='1939' else 'N/A', axis=1)
+stats['POS'] = stats.apply(lambda x: x['POS'] if x['Special Circumstances']=='N/A' else None, axis=1)
+stats['League Num'] = stats['LEAGUE'].apply(lambda x: 0 if x=='FL-CH' else 5 if x=='NAT-P' else int(re.search('(\d)',x).group(1)))
+stats['Outcome Key'] = stats['League Num'] - stats['League Num'].shift(-1) 
+stats['Outcome'] = stats['Outcome Key'].apply(lambda x: 'Promoted' if x>0 else 'Relegated' if x<0 else 'Same League')
 
+stats.index = stats['SEASON'].apply(lambda x: int(x[0:4]))
+stats = stats.reindex(np.arange(stats.index.min(), stats.index.max() + 1)).rename_axis('Year').reset_index()
+stats['SEASON'] = stats['Year'].apply(lambda x: f'{x}-{str(x+1)[-2:]}')
+stats['Special Circumstances'] = stats.apply(lambda x: x['Special Circumstances'] if pd.notna(x['Special Circumstances']) else
+                                             'WW1' if x['Year']<1939 else 'WW2', axis=1)
+stats = stats[['SEASON', 'Outcome', 'Special Circumstances', 'LEAGUE', 'P', 'W', 'D', 'L', 'F', 'A', 'Pts', 'POS']]
