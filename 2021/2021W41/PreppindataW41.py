@@ -10,7 +10,7 @@ stats['Special Circumstances'] = stats.apply(lambda x: 'Incomplete' if x['SEASON
 stats['POS'] = stats.apply(lambda x: x['POS'] if x['Special Circumstances']=='N/A' else None, axis=1)
 stats['League Num'] = stats['LEAGUE'].apply(lambda x: 0 if x=='FL-CH' else 5 if x=='NAT-P' else int(re.search('(\d)',x).group(1)))
 stats['Outcome Key'] = stats['League Num'] - stats['League Num'].shift(-1) 
-stats['Outcome'] = stats['Outcome Key'].apply(lambda x: 'Promoted' if x>0 else 'Relegated' if x<0 else 'Same League')
+stats['Outcome'] = stats['Outcome Key'].apply(lambda x: 'Promoted' if x>0 else 'Relegated' if x<0 else 'Same League' if x==0 else None)
 
 stats.index = stats['SEASON'].apply(lambda x: int(x[0:4]))
 stats = stats.reindex(np.arange(stats.index.min(), stats.index.max() + 1)).rename_axis('Year').reset_index()

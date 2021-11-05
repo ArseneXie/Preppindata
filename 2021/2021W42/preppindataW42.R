@@ -1,21 +1,18 @@
 library(readr)
 library(dplyr)
 library(tidyr)
-library(stringr)
 
-final <- read_csv("C:/Data/PreppinData/Bike Painting Process - Painting Process.csv") %>%
-  mutate('Datetime' = as.POSIXct(paste(`Date`, `Time`),format='%d/%m/%Y %H:%M:%S'),
-         'Bike Type' = if_else(`Data Parameter`=='Bike Type', `Data Value`, NA_character_),
-         'Batch Status' = if_else(`Data Parameter`=='Batch Status', `Data Value`, NA_character_),
-         'Name of Process Stage' = if_else(`Data Parameter`=='Name of Process Stage', `Data Value`, NA_character_)) %>%
-  group_by(`Batch No.`) %>%
-  arrange(`Datetime`) %>%
-  fill(`Bike Type`, `Batch Status`, `Name of Process Stage`) %>%
-  filter((`Data Type`=='Process Data') & (`Data Parameter`!='Name of Process Stage')) %>%
-  mutate('Actual' = if_else(str_detect(`Data Parameter`, '^(Actual)'), as.numeric(`Data Value`), NA_real_),
-         'Target' = if_else(str_detect(`Data Parameter`, '^(Target)'), as.numeric(`Data Value`), NA_real_),
-         'Data Parameter' = str_remove(`Data Parameter`,'^(\\w+\\s)')) %>%
-  select(c('Batch No.', 'Bike Type', 'Batch Status', 'Name of Process Stage',
-           'Data Parameter', 'Actual', 'Target', 'Datetime'))
+Sys.setlocale("LC_ALL","English")
+
+final <- read_csv("C:/Data/PreppinData/Prep Generate Rows datasets - Charity Fundraiser.csv",
+                  col_types =cols(`Date` = col_date(format = "%d/%m/%Y"))) %>%
+  complete(., `Date` = full_seq(`Date`, period = 1)) %>%
+  arrange(`Date`) %>%
+  fill(`Total Raised to date`) %>%
+  mutate('Days into fund raising' = row_number()-1,
+         'Value raised per day' = if_else(`Days into fund raising`>0, `Total Raised to date`/`Days into fund raising`, NA_real_), 
+         'Date' = weekdays(`Date`)) %>%
+  group_by(`Date`) %>%
+  mutate('Average raised per weekday' = mean(`Value raised per day`, na.rm=TRUE))
 
 View(final)
