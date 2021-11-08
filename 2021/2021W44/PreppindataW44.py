@@ -1,19 +1,12 @@
 import pandas as pd
-import re
 
-process = pd.read_csv("C:\\Data\\PreppinData\\Bike Painting Process - Painting Process.csv")
-process['Datetime'] = process.apply(lambda x: pd.to_datetime(f"{x['Date']} {x['Time']}"), axis=1)
-process = process.groupby(['Batch No.']).apply(pd.DataFrame.sort_values, 'Datetime', ascending=True).reset_index(drop=True)
- 
-for attr in ['Bike Type', 'Batch Status', 'Name of Process Stage']:
-    process[attr] = process.apply(lambda x: x['Data Value'] if x['Data Parameter']==attr else None, axis=1)
-    process[attr] = process.groupby(['Batch No.'])[attr].ffill() 
-    
-process = process[(process['Data Type']=='Process Data') & (process['Data Parameter']!='Name of Process Stage')]
-for vtype in ['Actual', 'Target']:
-    process[vtype] = process.apply(lambda x: float(x['Data Value']) if re.match(f'^({vtype})',x['Data Parameter']) else None, axis=1)
-process['Data Parameter'] = process['Data Parameter'].apply(lambda x: re.sub('^(\w+\s)','',x))
-process = process[['Batch No.', 'Bike Type', 'Batch Status', 'Name of Process Stage',
-                   'Data Parameter', 'Actual', 'Target', 'Datetime']]
-   
-
+xlsx = pd.ExcelFile(r"C:\Data\PreppinData\Carl's 2021 cycling.xlsx")
+cycling = pd.read_excel(xlsx)
+cycling['Measure'] = cycling['Measure'].apply(lambda x: 'Outdoors' if x=='km' else 'Turbo Trainer') 
+cycling['Activity per day'] = cycling['Type'].groupby(cycling['Date']).transform('count')
+cycling = cycling.pivot_table(index= ['Date', 'Activity per day'],
+                              columns='Measure', values='Value', aggfunc=sum).reset_index()
+cycling.index = pd.DatetimeIndex(cycling['Date'])
+cycling = cycling.reindex(pd.date_range(cycling.index.min(), cycling.index.max())).rename_axis('FillDate').reset_index()
+cycling['Date'] = cycling['FillDate'].dt.date 
+cycling = cycling[['Date', 'Activity per day', 'Turbo Trainer', 'Outdoors']].fillna(0)
