@@ -1,23 +1,48 @@
 library(readr)
 library(dplyr)
+library(tidyr)
 
-Sys.setlocale("LC_ALL","English")
+df <- read_csv("C:/Data/PreppinData/2021W51 Input.csv",
+               col_types =cols(`Order Date` = col_date(format = "%d/%m/%Y"))) %>%
+  separate(`OrderID`, c('Store','OrderID'),sep='-') %>%
+  mutate('Returned' = as.integer(!is.na(`Return State`)),
+         'Unit Price' = as.numeric(substring(`Unit Price`, 2)),
+         'Sales' = `Unit Price`*`Quantity`) %>%
+  group_by(`Store`) %>%
+  mutate('Store First Order' = min(`Order Date`)) %>%
+  group_by(`Customer`) %>%
+  mutate('Customer First Order' = min(`Order Date`),
+         'Number of Orders' = n_distinct(`OrderID`),
+         'Return %' = round(sum(`Returned`)/n(),2)) %>%
+  group_by(`Product Name`) %>%
+  mutate('Product First Sold' = min(`Order Date`)) %>%
+  ungroup() %>%
+  mutate('StoreID' = dense_rank(interaction(`Store First Order`, `Store`, lex.order=T)),
+         'CustomerID' = dense_rank(interaction(`Customer First Order`, `Customer`, lex.order=T)),
+         'ProductID' = dense_rank(interaction(`Product First Sold`, tolower(`Product Name`), lex.order=T)))
+  
+fact <- df %>%
+  select(c('StoreID', 'CustomerID', 'OrderID', 'Order Date', 'ProductID', 'Returned', 'Quantity', 'Sales'))
 
-final <- read_csv("C:/Data/PreppinData/PD 2021 Wk 49 Input - Input.csv",
-                  col_types =cols(`Date` = col_date(format = "%d/%m/%Y"))) %>%
-  group_by(`Name`) %>%
-  arrange(`Date`) %>%
-  mutate('Report Year' = strftime(`Date`,'%Y'),
-         'Employment Range' = paste(strftime(min(`Date`),'%b %Y'),'to',strftime(max(`Date`),'%b %Y')),
-         'Months Count' = 1, 
-         'Nth Month' = cumsum(`Months Count`)) %>%
-  group_by(`Name`, `Report Year`) %>%
-  summarise('Employment Range' = first(`Employment Range`),
-            'Tenure by End of Reporting Year' = max(`Nth Month`),
-            'Salary Paid' = round(first(`Annual Salary`)*sum(`Months Count`)/12,2),
-            'Yearly Bonus' = sum(`Sales`)*0.05,
-            'Total Paid' = round(`Salary Paid`+`Yearly Bonus`), .groups='drop') %>%
-  select(c('Name', 'Employment Range', 'Report Year', 
-           'Tenure by End of Reporting Year', 'Salary Paid', 'Yearly Bonus', 'Total Paid'))
+store <- df %>%
+  select(c('StoreID', 'Store', 'Store First Order')) %>%
+  distinct() %>%
+  rename('First Order' = 'Store First Order') %>%
+  arrange(`StoreID`)
 
-View(final)
+customer <- df %>%
+  select(c('CustomerID', 'Customer', 'Return %', 'Number of Orders', 'Customer First Order')) %>%
+  distinct() %>%
+  rename('First Order' = 'Customer First Order') %>%
+  arrange(`CustomerID`)
+  
+product <- df %>%
+  select(c('ProductID', 'Category', 'Sub-Category', 'Product Name', 'Unit Price', 'Product First Sold')) %>%
+  distinct() %>%
+  rename('First Sold' = 'Product First Sold') %>%
+  arrange(`ProductID`)
+
+View(fact)
+View(store)
+View(customer)
+View(product)
