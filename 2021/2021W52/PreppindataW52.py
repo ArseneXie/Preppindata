@@ -1,18 +1,22 @@
 import pandas as pd
+import re
 
-salary = pd.read_csv("C:\\Data\\PreppinData\\PD 2021 Wk 49 Input - Input.csv", 
-                     parse_dates=['Date'], date_parser=lambda x: pd.to_datetime(x, format='%d/%m/%Y'))
-salary['Report Year'] = salary['Date'].dt.year
-salary['Min Date'] = salary['Date'].groupby(salary['Name']).transform('min').dt.strftime('%b %Y')
-salary['Max Date'] = salary['Date'].groupby(salary['Name']).transform('max').dt.strftime('%b %Y')
-salary['Employment Range'] = salary['Min Date']+' to '+salary['Max Date']
-salary['Tenure by End of Reporting Year'] = salary.sort_values('Date').groupby(['Name']).cumcount()+1
-salary['Salary Paid'] = salary['Annual Salary']/12
-salary['Yearly Bonus'] = salary['Sales']*0.05
+xlsx = pd.ExcelFile(r"C:\Data\PreppinData\PD 2021 Wk 52 Input.xlsx")
 
-salary = salary.groupby(['Name', 'Report Year'], as_index=False).agg({
-    'Employment Range':'first', 'Tenure by End of Reporting Year':'max', 'Salary Paid':'sum', 'Yearly Bonus':'sum'})
-salary['Salary Paid'] = round(salary['Salary Paid'],2)
-salary['Total Paid'] = round(salary['Salary Paid']+salary['Yearly Bonus'])
-salary = salary[['Name', 'Employment Range', 'Report Year', 
-       'Tenure by End of Reporting Year', 'Salary Paid', 'Yearly Bonus', 'Total Paid']]
+resp = pd.read_excel(xlsx, 'Department Responsbile')
+resp = resp.groupby('Department')['Keyword'].apply(list).reset_index(name='Keyword List') 
+resp['Dummy'] = 1
+
+comp = pd.read_excel(xlsx, 'Complaints')
+comp['Complaints per person'] = comp['Complaint'].groupby(comp['Name']).transform('count')
+comp['ID'] = comp.index
+comp['Dummy'] = 1
+
+final = pd.merge(comp, resp, on='Dummy')
+final['Match'] = final.apply(lambda x: [kw.lower() for kw in x['Keyword List'] if re.match(f'.*{kw.lower()}.*', x['Complaint'])], axis=1)
+final['Match Count'] = final['Match'].apply(lambda x: len(x)) 
+final['Complaint Match'] = final['Match Count'].groupby(final['ID']).transform('sum')
+final['Department'] = final.apply(lambda x: 'Unknown' if x['Complaint Match']==0 else x['Department'], axis=1)
+final['Complaint causes'] = final.apply(lambda x: 'other' if x['Complaint Match']==0 else ', '.join(x['Match']), axis=1)
+final = final[((final['Complaint Match']==0) | (final['Match Count']>0))]
+final = final[['Complaint', 'Complaint causes', 'Department', 'Name', 'Complaints per person']].drop_duplicates()

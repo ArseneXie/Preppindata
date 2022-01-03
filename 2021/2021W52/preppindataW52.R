@@ -1,23 +1,20 @@
-library(readr)
+library(readxl)
 library(dplyr)
+library(fuzzyjoin)
 
-Sys.setlocale("LC_ALL","English")
+xlsx <- "C:/Data/PreppinData/PD 2021 Wk 52 Input.xlsx"
 
-final <- read_csv("C:/Data/PreppinData/PD 2021 Wk 49 Input - Input.csv",
-                  col_types =cols(`Date` = col_date(format = "%d/%m/%Y"))) %>%
+final <- read_excel(xlsx, 'Complaints') %>%
   group_by(`Name`) %>%
-  arrange(`Date`) %>%
-  mutate('Report Year' = strftime(`Date`,'%Y'),
-         'Employment Range' = paste(strftime(min(`Date`),'%b %Y'),'to',strftime(max(`Date`),'%b %Y')),
-         'Months Count' = 1, 
-         'Nth Month' = cumsum(`Months Count`)) %>%
-  group_by(`Name`, `Report Year`) %>%
-  summarise('Employment Range' = first(`Employment Range`),
-            'Tenure by End of Reporting Year' = max(`Nth Month`),
-            'Salary Paid' = round(first(`Annual Salary`)*sum(`Months Count`)/12,2),
-            'Yearly Bonus' = sum(`Sales`)*0.05,
-            'Total Paid' = round(`Salary Paid`+`Yearly Bonus`), .groups='drop') %>%
-  select(c('Name', 'Employment Range', 'Report Year', 
-           'Tenure by End of Reporting Year', 'Salary Paid', 'Yearly Bonus', 'Total Paid'))
-
+  mutate('Complaints per person' = n()) %>%
+  regex_left_join(read_excel(xlsx, 'Department Responsbile') %>%
+                     mutate('Keyword' = tolower(`Keyword`),
+                            'Pattern'=paste0('.*',tolower(`Keyword`),'.*')),
+                   by = c(`Complaint`='Pattern')) %>%
+  mutate_at(vars('Keyword'), ~replace_na(., 'other')) %>%
+  mutate_at(vars('Department'), ~replace_na(., 'Unknown')) %>%
+  group_by(`Complaint`,`Department`, `Name`, `Complaints per person`) %>%
+  summarise('Complaint causes' = toString(sort(unique(`Keyword`))), .groups='drop') %>%
+  select(c('Complaint', 'Complaint causes', 'Department', 'Name', 'Complaints per person'))
+  
 View(final)
