@@ -29,6 +29,7 @@ final = final[final['Match Letter']==7]
 
 final = final.groupby('7 letter word', as_index=False).agg({'Points':'sum', 'LN Chance':'sum'}).rename(columns={'Points':'Total Points'})
 final['% Chance'] = np.exp(final['LN Chance'])
-final['Likelihood Rank'] = final['% Chance'].rank(method='dense',ascending=False).astype(int)
+final['% Chance Temp'] = round(final['% Chance'],15)
+final['Likelihood Rank'] = final['% Chance Temp'].rank(method='dense',ascending=False).astype(int)
 final['Points Rank'] = final['Total Points'].rank(method='dense',ascending=False).astype(int)
 final = final[['Points Rank', 'Likelihood Rank', '7 letter word', '% Chance', 'Total Points']]
