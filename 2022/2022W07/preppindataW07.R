@@ -1,37 +1,42 @@
 library(readxl)
 library(dplyr)
 library(tidyr)
-library(splitstackshape)
 library(stringr)
-library(fuzzyjoin)
-options("scipen"=100, "digits"=14)
+library(lubridate)
+library(purrr)
 
-xlsx <- "C:/Data/PreppinData/7 letter words.xlsx"
+Sys.setlocale("LC_ALL","English")
+people_xlsx <- "C:/Data/PreppinData/PeopleData.xlsx"
+data_xlsx <- "C:/Data/PreppinData/MetricData2021.xlsx"
 
-scores <- read_excel(xlsx, 'Scrabble Scores') %>%
-  separate(`Scrabble`, c('Points', 'TileFreqDtl'), sep='point(s*):', convert=TRUE) %>%
-  cSplit(., 'TileFreqDtl', ',', type.convert=FALSE) %>%
-  pivot_longer(cols = -'Points', names_to = 'ToDrop', values_to = 'TileFreq', values_drop_na = TRUE) %>%
-  mutate('Tile' = str_extract(`TileFreq`,'(\\w+)(?=\\s)'),
-         'Frequency' = as.integer(str_extract(`TileFreq`,'(\\d+)$')),
-         'LN Chance' = log(`Frequency`/sum(`Frequency`)))
+correct_cols <- c('id'='AgentID', 'Calls Offered'='Offered', 'Calls Not Answered'='Not Answered', 'Calls Answered'='Answered')
 
-words <- read_excel(xlsx, '7 letter words') %>%  
-  mutate('Temp' = toupper(str_replace_all(`7 letter word`,'\\B',','))) %>%
-  cSplit(., 'Temp', ',', type.convert=FALSE) %>%
-  pivot_longer(cols = -c('7 letter word'), names_to = 'ToDrop', values_to = 'Letter', values_drop_na = TRUE) %>%
-  group_by(`7 letter word`, `Letter`) %>%
-  mutate('Letter Count' = n()) 
+call_data <- data_xlsx %>%
+  excel_sheets() %>%
+  set_names() %>%
+  map_df(
+    ~ read_excel(path = data_xlsx, sheet = .x,) %>% rename(any_of(correct_cols)),
+    .id = 'Month') %>%
+  mutate('Month Start Date' = as.Date(paste0('2021-',`Month`,'-01'), format='%Y-%b-%d'))
 
-final <- fuzzy_inner_join(words, scores, 
-                          by = c('Letter'='Tile','Letter Count'='Frequency'), match_fun = list(`==`, `<=`)) %>%
-  group_by(`7 letter word`) %>%
-  filter(n()==7) %>%
-  summarise('% Chance' = exp(sum(`LN Chance`)),
-            '% Chance Temp' = round(`% Chance`,15),
-            'Total Points' = sum(`Points`)) %>%
-  mutate('Likelihood Rank' = dense_rank(desc(`% Chance Temp`)),
-         'Points Rank' = dense_rank(desc(`Total Points`))) %>%
-  select(c('Points Rank', 'Likelihood Rank', '7 letter word', '% Chance', 'Total Points'))
-  
+final <- read_excel(people_xlsx, 'People') %>%
+  mutate('Agent Name' = paste(`last_name`, `first_name`, sep=', ')) %>%
+  merge(read_excel(people_xlsx, 'Location'), by = 'Location ID') %>%
+  merge(read_excel(people_xlsx, 'Leaders') %>%
+          mutate('Leader Name' = paste(`last_name`, `first_name`, sep=', '),
+                 'Leader 1' = `id`) %>%
+          select(c('Leader 1', 'Leader Name')), by='Leader 1') %>%
+  crossing(., read_excel(people_xlsx, 'Date Dim') %>% filter(year(`Month Start Date`) == 2021)) %>%
+  crossing(., read_excel(people_xlsx, 'Goals') %>%
+             mutate('value' = as.numeric(str_extract(`Goals`, '(\\d+)$'))) %>%
+             pivot_wider(names_from = 'Goals', values_from = 'value')) %>%
+  merge(call_data, by=c('id', 'Month Start Date'), all.x=TRUE) %>%
+  mutate('Not Answered Rate' = round(`Calls Not Answered`/`Calls Offered`,3),
+         'Agent Avg Duration' = round(`Total Duration`/`Calls Answered`),
+         'Met Not Answered Rate' = (`Not Answered Rate`*100 < `Not Answered Percent < 5`),
+         'Met Sentiment Goal' = (`Sentiment` >= `Sentiment Score >= 0`)) %>%
+  select(c('id', 'Agent Name', 'Leader 1', 'Leader Name', 'Month Start Date','Location', 'Calls Answered', 'Calls Not Answered', 
+           'Not Answered Rate', 'Met Not Answered Rate', 'Not Answered Percent < 5', 'Calls Offered', 'Total Duration', 
+           'Agent Avg Duration', 'Transfers', 'Sentiment', 'Sentiment Score >= 0', 'Met Sentiment Goal'))
+
 View(final)
