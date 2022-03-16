@@ -1,9 +1,17 @@
 library(readxl)
 library(dplyr)
 library(tidyr)
+library(lubridate)
 
-xlsx <- "C:/Data/PreppinData/input_pkmn_stats_and_evolutions.xlsx"
-combat_factors <- c('hp', 'attack', 'defense', 'special_attack', 'special_defense', 'speed')
+xlsx <- "C:/Data/PreppinData/Sample - Superstore.xls"
+sales <- read_excel(xlsx, 'Orders') %>%
+  mutate('Year' = year(`Order Date`))
+
+customer <- sales %>%
+  group_by(`Customer ID`, `Customer Name`, `Year`) %>%
+  summarise('Order?' = n(), .groups = 'drop')
+
+
 
 stats <- read_excel(xlsx, 'pkmn_stats') %>%
   select(-c('height', 'weight', 'evolves_from')) %>%
@@ -25,3 +33,5 @@ final <- read_excel(xlsx, 'pkmn_evolutions') %>%
   arrange(`combat_power_increase`)
 
 View(final)
+
+complete(`Date` = seq.Date(min(`Date`), max(`Date`), by='day'))

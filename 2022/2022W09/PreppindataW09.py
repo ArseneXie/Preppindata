@@ -1,4 +1,7 @@
 import pandas as pd
+import re
+
+classification = {'N':'New', 'C':'Consistent', 'S':'Sleeping', 'R':'Returning'}
 
 xlsx = pd.ExcelFile(r"C:\Data\PreppinData\Sample - Superstore.xls")
 
@@ -6,32 +9,24 @@ sales = pd.read_excel(xlsx,'Orders')
 sales['Year'] = sales['Order Date'].apply(lambda x: x.year)
 
 customer = sales.groupby(['Customer ID', 'Customer Name', 'Year'], as_index=False).agg({'Order ID':'count'})
-customer = customer
+customer['First Purchase'] = customer['Year'].groupby(customer['Customer ID']).transform('min')
+customer = customer.pivot_table(index=['Customer ID', 'Customer Name', 'First Purchase'],
+                                columns='Year', values='Order ID', aggfunc=max).reset_index()
+customer = customer.melt(id_vars=['Customer ID', 'Customer Name', 'First Purchase'], value_name='Order?', var_name='Year')
+customer['Order?'] = customer['Order?'].apply(lambda x: 0 if pd.isnull(x) else 1) 
+customer['Position'] = customer['Year'] - customer['Year'].min()
+customer['Power'] = customer['Year'].max() - customer['Year']
+customer['Temp'] = customer['Order?']*(10**customer['Power']) 
+customer['OrderString'] = customer['Temp'].groupby(customer['Customer ID']).transform('sum')
+customer['OrderString'] = customer['OrderString'].apply(lambda x: re.sub('0', 'S', re.sub('(?<=0)(1)', 'R', re.sub('(?<!0)(1)', 'C', re.sub('(^1)', 'N', str(x))))).rjust(4, '-'))
+customer['Customer Classification'] = customer.apply(lambda x: classification.get(x['OrderString'][x['Position']],'-'), axis=1)
+customer = customer[customer['Customer Classification']!='-'][['Customer ID', 'Customer Name', 'First Purchase', 'Year', 'Order?', 'Customer Classification']]
 
-def reindex_by_date(df):
-    years = pd.date_range(df.index.min(), df.index.max())
-    return df.reindex(years).ffill()
+cohort = customer.groupby(['First Purchase', 'Year'], as_index=False).agg({'Order?':'sum'})
+cohort = cohort.sort_values(['First Purchase', 'Year'])
+cohort['Previous'] = cohort.groupby('First Purchase')['Order?'].transform(lambda x: x.shift(1))
+cohort['YoY Difference'] = cohort.apply(lambda x: (x['Order?'] - x['Previous']) if x['Year'] > x['First Purchase'] else None, axis=1 )
 
-test = customer.copy()
+customer = pd.merge(customer, cohort[['First Purchase', 'Year', 'YoY Difference']], on=['First Purchase', 'Year'])
+final = pd.merge(customer, sales, on=['Customer ID', 'Customer Name', 'Year'], how='left')
 
-test.groupby('Customer ID').apply(reindex_by_date).reset_index(0, drop=True)
-
-factors = ['hp', 'attack', 'defense', 'special_attack', 'special_defense', 'speed']
-
-stats = pd.read_excel(xlsx,'Orders').drop(['height', 'weight', 'evolves_from'], axis=1) 
-stats = stats.melt(id_vars=[c for c in stats.columns if c not in factors], value_name='factor_value', var_name='combat_factors')
-
-evol = pd.read_excel(xlsx,'pkmn_evolutions').dropna(subset=['Stage_2']).reset_index().rename(columns={'index': 'key'})
-
-final = pd.merge(evol, stats.rename(columns={'name':'Stage_1'}), on='Stage_1').rename(columns={'factor_value':'intial_combat_power'})
-final = pd.merge(final, stats[['name', 'combat_factors', 'factor_value']].rename(columns={'name':'Stage_2'}), 
-                 on=['Stage_2','combat_factors']).rename(columns={'factor_value':'stage2_combat_power'})
-final = pd.merge(final, stats[['name', 'combat_factors', 'factor_value']].rename(columns={'name':'Stage_3'}), 
-                 on=['Stage_3','combat_factors'], how='left').rename(columns={'factor_value':'stage3_combat_power'})
-
-final = final.groupby('key').agg({'Stage_1':'max', 'Stage_2':'max', 'Stage_3':'max', 'pokedex_number':'max', 'gen_introduced':'max',
-                                  'intial_combat_power':'sum', 'stage2_combat_power':'sum', 'stage3_combat_power':'sum'})
-final['final_combat_power'] = final.apply(lambda x: x['stage2_combat_power'] if pd.isna(x['Stage_3']) else int(x['stage3_combat_power']), axis=1)
-final['combat_power_increase'] = (final['final_combat_power']-final['intial_combat_power'])/final['intial_combat_power']
-final = final[['Stage_1', 'Stage_2', 'Stage_3', 'pokedex_number', 'gen_introduced', 
-               'intial_combat_power', 'final_combat_power', 'combat_power_increase']].sort_values('combat_power_increase')
