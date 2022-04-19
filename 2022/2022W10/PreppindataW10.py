@@ -1,22 +1,20 @@
 import pandas as pd
+import html
+import re
 
-xlsx = pd.ExcelFile(r"C:\Data\PreppinData\input_pkmn_stats_and_evolutions.xlsx")
-factors = ['hp', 'attack', 'defense', 'special_attack', 'special_defense', 'speed']
+xlsx = pd.ExcelFile(r"C:\Data\PreppinData\PD Bechdel Test.xlsx")
 
-stats = pd.read_excel(xlsx,'pkmn_stats').drop(['height', 'weight', 'evolves_from'], axis=1) 
-stats = stats.melt(id_vars=[c for c in stats.columns if c not in factors], value_name='factor_value', var_name='combat_factors')
+ranking = {"There are two or more women in this movie and they talk to each other about something other than a man":1,
+           "There are two or more women in this movie and they talk to each other about something other than a man, although dubious":2,
+           "There are two or more women in this movie, but they only talk to each other about a man":3,
+           "There are two or more women in this movie, but they don't talk to each other":4,
+           "Fewer than two women in this movie":5 }
 
-evol = pd.read_excel(xlsx,'pkmn_evolutions').dropna(subset=['Stage_2']).reset_index().rename(columns={'index': 'key'})
-
-final = pd.merge(evol, stats.rename(columns={'name':'Stage_1'}), on='Stage_1').rename(columns={'factor_value':'intial_combat_power'})
-final = pd.merge(final, stats[['name', 'combat_factors', 'factor_value']].rename(columns={'name':'Stage_2'}), 
-                 on=['Stage_2','combat_factors']).rename(columns={'factor_value':'stage2_combat_power'})
-final = pd.merge(final, stats[['name', 'combat_factors', 'factor_value']].rename(columns={'name':'Stage_3'}), 
-                 on=['Stage_3','combat_factors'], how='left').rename(columns={'factor_value':'stage3_combat_power'})
-
-final = final.groupby('key').agg({'Stage_1':'max', 'Stage_2':'max', 'Stage_3':'max', 'pokedex_number':'max', 'gen_introduced':'max',
-                                  'intial_combat_power':'sum', 'stage2_combat_power':'sum', 'stage3_combat_power':'sum'})
-final['final_combat_power'] = final.apply(lambda x: x['stage2_combat_power'] if pd.isna(x['Stage_3']) else int(x['stage3_combat_power']), axis=1)
-final['combat_power_increase'] = (final['final_combat_power']-final['intial_combat_power'])/final['intial_combat_power']
-final = final[['Stage_1', 'Stage_2', 'Stage_3', 'pokedex_number', 'gen_introduced', 
-               'intial_combat_power', 'final_combat_power', 'combat_power_increase']].sort_values('combat_power_increase')
+movie = pd.read_excel(xlsx,'Webscraping')
+movie['Movie'] = movie['DownloadData'].apply(lambda x: html.unescape(re.search('(?<=>)(([^><])+)(?=<\/a>)', x).group(1)))
+movie['Categorisation'] = movie['DownloadData'].apply(lambda x: re.search('(?<=title="\[)(.*)(?=\])', x).group(1))
+movie['Ranking'] = movie['Categorisation'].apply(lambda x: ranking.get(x))
+movie['Worst Ranking'] = movie['Ranking'].groupby([movie['Movie'], movie['Year']]).transform('max')
+movie = movie[movie['Ranking'] == movie['Worst Ranking']].drop('DownloadData', axis=1).drop_duplicates()
+movie['Pass/Fail'] = movie['Ranking'].apply(lambda x: 'Pass' if x<=2 else 'Fail')
+movie = movie[['Movie', 'Year', 'Pass/Fail', 'Ranking', 'Categorisation']]

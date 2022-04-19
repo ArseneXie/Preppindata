@@ -1,27 +1,25 @@
 library(readxl)
 library(dplyr)
-library(tidyr)
+library(xml2)
+library(stringr)
 
-xlsx <- "C:/Data/PreppinData/input_pkmn_stats_and_evolutions.xlsx"
-combat_factors <- c('hp', 'attack', 'defense', 'special_attack', 'special_defense', 'speed')
+xlsx <- "C:/Data/PreppinData/PD Bechdel Test.xlsx"
 
-stats <- read_excel(xlsx, 'pkmn_stats') %>%
-  select(-c('height', 'weight', 'evolves_from')) %>%
-  pivot_longer(cols=all_of(combat_factors), names_to = 'combat_factors', values_to = 'value')
-
-final <- read_excel(xlsx, 'pkmn_evolutions') %>% 
-  drop_na(`Stage_2`) %>%
-  merge(., stats %>% rename('Stage_1'='name'), by='Stage_1') %>% 
-  merge(., stats %>% 
-          select(c('name', 'combat_factors', 'value')) %>% 
-          rename('Stage_2'='name'), by=c('Stage_2', 'combat_factors'), suffixes = c(".s1","")) %>%
-  merge(., stats %>% 
-          select(c('name', 'combat_factors', 'value')) %>% 
-          rename('Stage_3'='name'), by=c('Stage_3', 'combat_factors'), suffixes = c(".s2",".s3"), all.x=TRUE) %>%
-  group_by(`Stage_1`, `Stage_2`, `Stage_3`, `pokedex_number`, `gen_introduced`) %>%
-  summarise('intial_combat_power' = sum(`value.s1`), 
-            'final_combat_power' = if_else(is.na(max(`Stage_3`)), sum(`value.s2`), sum(`value.s3`)), 
-            'combat_power_increase' = (`final_combat_power`-`intial_combat_power`)/`intial_combat_power`, .groups = 'drop') %>%
-  arrange(`combat_power_increase`)
+final <- read_excel(xlsx, 'Webscraping') %>% 
+  rowwise() %>%
+  mutate('Movie' = str_extract(`DownloadData`, '(?<=>)(([^><])+)(?=<\\/a>)'),
+         'Movie' = xml_text(read_html(charToRaw(`Movie`))),
+         'Categorisation' = str_extract(`DownloadData`, '(?<=title="\\[)(.*)(?=\\])'),
+         'Ranking' = case_when(
+           `Categorisation`=='There are two or more women in this movie and they talk to each other about something other than a man' ~ 1,
+           `Categorisation`=='There are two or more women in this movie and they talk to each other about something other than a man, although dubious' ~ 2,
+           `Categorisation`=='There are two or more women in this movie, but they only talk to each other about a man' ~ 3,
+           `Categorisation`=="There are two or more women in this movie, but they don't talk to each other" ~ 4,
+           TRUE ~ 5),
+         'Pass/Fail' = if_else(`Ranking`<=2, 'Pass', 'Fail')) %>%
+  group_by(`Movie`, `Year`) %>%
+  filter(`Ranking` == max(`Ranking`)) %>%
+  select(c('Movie', 'Year', 'Pass/Fail', 'Ranking', 'Categorisation')) %>%
+  distinct()
 
 View(final)
